@@ -246,20 +246,23 @@ class STMF_HAMER(HAMER):
     def __init__(self, cfg, init_renderer: bool = True):
         super(STMF_HAMER, self).__init__(cfg, init_renderer)
         
-        # Freeze the visual backbone as specified in the proposal
+        # Freeze the visual backbone AND original mano_head as specified in the residual proposal
         for param in self.backbone.parameters():
+            param.requires_grad = False
+            
+        for param in self.mano_head.parameters():
             param.requires_grad = False
             
         d_model = cfg.MODEL.BACKBONE.get('OUT_CHANNELS', 1024) 
         if hasattr(self.backbone, 'embed_dim'):
             d_model = self.backbone.embed_dim
         
-        self.mano_head = STMFHead(
+        self.stmf_head = STMFHead(
             sensor_dim=5,
             pose_dim=48,
             d_model=d_model,
             nhead=8,
-            num_layers=3
+            num_layers=6 # Increased from 3 to 6 for better capacity
         )
         
         # STMF Specific Losses
@@ -287,12 +290,21 @@ class STMF_HAMER(HAMER):
         
         with torch.no_grad():
             self.backbone.eval()
+            self.mano_head.eval()
             # If using ViT backbone, aspect ratio crops are standard in HaMeR:
             # We crop the 256x256 image to 256x192 if necessary, depending on config.
             # Hamer: x[:,:,:,32:-32]
             conditioning_feats = self.backbone(x_flat[:, :, :, 32:-32])  
             # conditioning_feats shape: (B*T, D_model, H_patch, W_patch) e.g., (B*T, 1024, 16, 12) -> size=192 patches
             
+            # Predict base pose using original frozen mano_head
+            base_mano_params, base_cam, _ = self.mano_head(conditioning_feats)
+        
+        # Original mano_head outputs shape (B*T, ...). We extract the base pose for the target frame (last frame in window).
+        target_idx = -1 
+        base_mano_target = {k: v.view(B, T, -1)[:, target_idx, :] for k, v in base_mano_params.items()}
+        base_cam_target = base_cam.view(B, T, -1)[:, target_idx, :]
+
         _, D, Hp, Wp = conditioning_feats.shape
         
         # Reshape to visual_buffer shape expected by tokenizer: (B, T, Num_Patches, d_model)
@@ -305,12 +317,30 @@ class STMF_HAMER(HAMER):
         else:
             sensor_data = torch.zeros(B, 5, device=x.device, dtype=x.dtype)
             
+        # --- Modality Dropout: 10% chance to drop sensor data during training ---
+        if train and torch.rand(1).item() < 0.1:
+            sensor_data = torch.zeros_like(sensor_data)
+            
         if 'prev_pose' in batch:
             prev_pose = batch['prev_pose']
         else:
             prev_pose = torch.zeros(B, 48, device=x.device, dtype=x.dtype)
 
-        pred_mano_params, pred_cam = self.mano_head(visual_buffer, sensor_data, prev_pose)
+        delta_mano_params, delta_cam = self.stmf_head(visual_buffer, sensor_data, prev_pose)
+
+        # Convert delta axis-angles to rotation matrices
+        go_aa_delta = delta_mano_params['global_orient']  # (B, 3)
+        hp_aa_delta = delta_mano_params['hand_pose']      # (B, 45)
+        
+        go_rotmat_delta = aa_to_rotmat(go_aa_delta.reshape(-1, 3)).reshape(B, 1, 3, 3)
+        hp_rotmat_delta = aa_to_rotmat(hp_aa_delta.reshape(-1, 3)).reshape(B, 15, 3, 3)
+
+        # Residual Refinement formulation: composing rotations R_final = R_delta @ R_base
+        pred_mano_params = {}
+        pred_mano_params['global_orient'] = torch.matmul(go_rotmat_delta, base_mano_target['global_orient'].view(B, 1, 3, 3))
+        pred_mano_params['hand_pose'] = torch.matmul(hp_rotmat_delta, base_mano_target['hand_pose'].view(B, 15, 3, 3))
+        pred_mano_params['betas'] = base_mano_target['betas'].view(B, -1) + delta_mano_params['betas'].view(B, -1)
+        pred_cam = base_cam_target.view(B, -1) + delta_cam
 
         # Build output dictionary (same as HaMeR to preserve loss functions and rendering hooks)
         output = {}
@@ -325,16 +355,9 @@ class STMF_HAMER(HAMER):
         output['focal_length'] = focal_length
 
         # Compute model vertices and joints
-        # STMFHead outputs axis-angle: global_orient (B, 3), hand_pose (B, 45)
-        # MANO expects rotation matrices: global_orient (B, 1, 3, 3), hand_pose (B, 15, 3, 3)
-        go_aa = pred_mano_params['global_orient']  # (B, 3)
-        hp_aa = pred_mano_params['hand_pose']      # (B, 45)
+        # The hand poses in pred_mano_params are already valid rotation matrices:
+        # global_orient (B, 1, 3, 3), hand_pose (B, 15, 3, 3). No aa_to_rotmat needed!
         
-        go_rotmat = aa_to_rotmat(go_aa.reshape(-1, 3)).reshape(B, 1, 3, 3)
-        hp_rotmat = aa_to_rotmat(hp_aa.reshape(-1, 3)).reshape(B, 15, 3, 3)
-        
-        pred_mano_params['global_orient'] = go_rotmat
-        pred_mano_params['hand_pose'] = hp_rotmat
         pred_mano_params['betas'] = pred_mano_params['betas'].reshape(B, -1)
         
         mano_output = self.mano(**{k: v.float() for k, v in pred_mano_params.items()}, pose2rot=False)
@@ -363,17 +386,9 @@ class STMF_HAMER(HAMER):
         """
         Extends original compute_loss to include Physical Constraints and Smoothness.
         """
-        # The parent compute_loss expects pred_mano_params in rotation matrix format
-        # (because it converts GT axis-angle -> rotmat and compares).
-        # STMFHead outputs axis-angle, so we must convert before calling super().
-        B = output['pred_mano_params']['global_orient'].shape[0]
-        go_aa = output['pred_mano_params']['global_orient']  # (B, 3)
-        hp_aa = output['pred_mano_params']['hand_pose']      # (B, 45)
+        # The output['pred_mano_params'] are already valid rotation matrices
+        # so we can directly call super() which translates GT axis-angle to rotmat to match.
         
-        output['pred_mano_params']['global_orient'] = aa_to_rotmat(go_aa.reshape(-1, 3)).reshape(B, 1, 3, 3)
-        output['pred_mano_params']['hand_pose'] = aa_to_rotmat(hp_aa.reshape(-1, 3)).reshape(B, 15, 3, 3)
-        
-        # Also tell the parent that GT is axis-angle (it will convert GT too)
         # Original Baseline Loss computation
         base_loss = super().compute_loss(batch, output, train)
         losses = output['losses']
@@ -398,5 +413,5 @@ class STMF_HAMER(HAMER):
         return base_loss
 
     def get_parameters(self):
-        # We only return the tunable parameters (STMF Head), since Backbone is FROZEN.
-        return list(self.mano_head.parameters())
+        # We only return the tunable parameters (STMF Head), since Backbone & original MANO head are FROZEN.
+        return list(self.stmf_head.parameters())

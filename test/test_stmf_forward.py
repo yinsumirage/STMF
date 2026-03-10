@@ -42,10 +42,10 @@ def test_stmf():
     print(f"  Backbone frozen: {frozen} ({len(backbone_params)} params)")
     
     # Verify STMFHead is trainable
-    head_params = list(model.mano_head.parameters())
+    head_params = list(model.stmf_head.parameters())
     trainable = all(p.requires_grad for p in head_params)
     print(f"  STMFHead trainable: {trainable} ({len(head_params)} params)")
-    print(f"  STMFHead type: {type(model.mano_head).__name__}")
+    print(f"  STMFHead type: {type(model.stmf_head).__name__}")
     
     # ---- Step 3: Forward pass ----
     print("\n[3/5] Running forward pass...")
@@ -108,19 +108,19 @@ def test_stmf():
     print("\n[5/5] Backward pass (gradient check for STMFHead)...")
     loss.backward()
     
-    sensor_grad = model.mano_head.tokenizer.sensor_mlp[0].weight.grad
+    sensor_grad = model.stmf_head.tokenizer.sensor_mlp[0].weight.grad
     if sensor_grad is not None:
         print(f"  Sensor MLP grad shape: {sensor_grad.shape}, norm: {sensor_grad.norm().item():.6f}")
     else:
         print("  WARNING: Sensor MLP grad is None!")
     
-    pose_grad = model.mano_head.tokenizer.pose_mlp[0].weight.grad
+    pose_grad = model.stmf_head.tokenizer.pose_mlp[0].weight.grad
     if pose_grad is not None:
         print(f"  Pose MLP grad shape:   {pose_grad.shape}, norm: {pose_grad.norm().item():.6f}")
     else:
         print("  WARNING: Pose MLP grad is None!")
 
-    fusion_grad = model.mano_head.fusion_head.pose_regressor[0].weight.grad
+    fusion_grad = model.stmf_head.fusion_head.pose_regressor[0].weight.grad
     if fusion_grad is not None:
         print(f"  Fusion head grad shape: {fusion_grad.shape}, norm: {fusion_grad.norm().item():.6f}")
     else:
