@@ -13,12 +13,19 @@ def test_dataset():
     cfg.MANO.NUM_HAND_JOINTS = 15
     cfg.DATASETS = CN()
     cfg.DATASETS.CONFIG = CN()
-    
-    dataset_file = '/home/mirage/STMF/_DATA/hamer_evaluation_data/freihand_val.npz'
-    img_dir = '/home/mirage/STMF/_DATA/FreiHAND_pub_v2/evaluation/rgb'
+    cfg.DATASETS.CONFIG.SCALE_FACTOR = 0.3
+    cfg.DATASETS.CONFIG.ROT_FACTOR = 45
+    cfg.DATASETS.CONFIG.TRANS_FACTOR = 0.02
+    cfg.DATASETS.CONFIG.COLOR_SCALE = 0.2
+    cfg.DATASETS.CONFIG.ROT_AUG_RATE = 0.6
+    cfg.DATASETS.CONFIG.EXTREME_CROP_AUG_RATE = 0.1
+    cfg.DATASETS.CONFIG.FLIP_AUG_RATE = 0.5
+    cfg.DATASETS.CONFIG.DO_FLIP = True
+    dataset_file = '/home/mirage/STMF/_DATA/HO-3D_v3/ho3d_train.npz'
+    img_dir = '/home/mirage/STMF/_DATA/HO-3D_v3/'
 
     try:
-        ds = TemporalImageDataset(cfg, dataset_file, img_dir, train=False, seq_len=3, stride=1)
+        ds = TemporalImageDataset(cfg, dataset_file, img_dir, train=True, seq_len=3, stride=1)
         print(f"Dataset length (sequences): {len(ds)}")
         if len(ds) > 0:
             item = ds[0]

@@ -31,34 +31,38 @@ class TemporalImageDataset(ImageDataset):
         self.stride = stride
         
         # 2. Try to load 5-finger physical distance sensor data
-        # Check parent directory of img_dir for `training_finger_distances.json` or `evaluation_finger_distances.json`
-        self.sensor_data_source = None
-        base_dir = os.path.dirname(os.path.normpath(img_dir))
-        
-        # Determine split name roughly based on dataset_file naming
-        split_prefix = 'training' if 'train' in dataset_file.lower() else 'evaluation'
-        
-        sensor_json_path = os.path.join(base_dir, f'{split_prefix}_finger_distances.json')
-        if os.path.exists(sensor_json_path):
-            with open(sensor_json_path, 'r') as f:
-                raw_sensor = json.load(f)
-            
-            # Extract only the "normalized" values into an (N, 5) numpy array
-            self.sensor_data_source = np.array(
-                [item['normalized'] for item in raw_sensor], dtype=np.float32
-            )
-            
-            if len(self.sensor_data_source) != len(self.center):
-                print(f"Warning: TemporalImageDataset sensor count ({len(self.sensor_data_source)}) "
-                      f"!= image count ({len(self.center)}). Padding with zeros.")
-                pad_len = max(0, len(self.center) - len(self.sensor_data_source))
-                if pad_len > 0:
-                    pad = np.zeros((pad_len, 5), dtype=np.float32)
-                    self.sensor_data_source = np.vstack([self.sensor_data_source, pad])
+        # Prioritize reading from the NPZ file if available
+        if 'sensor' in self.data:
+            self.sensor_data_source = self.data['sensor'].astype(np.float32)
+            print(f"Loaded sensor data from NPZ: {self.sensor_data_source.shape}")
         else:
-            # If no sensor data is provided natively by the dataset, fallback to zeros
-            # This allows training datasets like EPICK to pass through gracefully before pseudo-labeling
-            self.sensor_data_source = np.zeros((len(self.center), 5), dtype=np.float32)
+            # Fallback to loading from JSON files
+            self.sensor_data_source = None
+            base_dir = os.path.dirname(os.path.normpath(img_dir))
+            
+            # Determine split name roughly based on dataset_file naming
+            split_prefix = 'training' if 'train' in dataset_file.lower() else 'evaluation'
+            
+            sensor_json_path = os.path.join(base_dir, f'{split_prefix}_finger_distances.json')
+            if os.path.exists(sensor_json_path):
+                with open(sensor_json_path, 'r') as f:
+                    raw_sensor = json.load(f)
+                
+                # Extract only the "normalized" values into an (N, 5) numpy array
+                self.sensor_data_source = np.array(
+                    [item['normalized'] for item in raw_sensor], dtype=np.float32
+                )
+                
+                if len(self.sensor_data_source) != len(self.center):
+                    print(f"Warning: TemporalImageDataset sensor count ({len(self.sensor_data_source)}) "
+                          f"!= image count ({len(self.center)}). Padding with zeros.")
+                    pad_len = max(0, len(self.center) - len(self.sensor_data_source))
+                    if pad_len > 0:
+                        pad = np.zeros((pad_len, 5), dtype=np.float32)
+                        self.sensor_data_source = np.vstack([self.sensor_data_source, pad])
+            else:
+                # If no sensor data is provided natively by the dataset, fallback to zeros
+                self.sensor_data_source = np.zeros((len(self.center), 5), dtype=np.float32)
 
         # 3. Build sequence indices
         # We assume dataset_file is sorted temporally (like FreiHAND video sequences).

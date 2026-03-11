@@ -1,0 +1,10 @@
+HO3D-TRAIN:
+  TYPE: TemporalImageDataset
+  DATASET_FILE: /home/mirage/STMF/_DATA/HO-3D_v3/ho3d_train.npz
+  IMG_DIR: /home/mirage/STMF/_DATA/HO-3D_v3/
+  WEIGHT: 1.0
+FREIHAND-TRAIN:
+  TYPE: TemporalImageDataset
+  DATASET_FILE: /home/mirage/STMF/_DATA/FreiHAND_pub_v2/freihand_training.npz
+  IMG_DIR: /home/mirage/STMF/_DATA/FreiHAND_pub_v2/
+  WEIGHT: 1.0

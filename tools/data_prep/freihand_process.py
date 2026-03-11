@@ -2,16 +2,25 @@
 FreiHAND 数据集扩展脚本
 ======================
 从 FreiHAND 的 3D 关节标注中生成五指归一化距离标注，
-输出 training_finger_distances.json 作为扩展数据。
+输出 [split]_finger_distances.json 作为后续 NPZ 导出的中间数据。
 
 用法:
-    python freihand_process.py [--freihand_dir PATH] [--split both] [--fist_ratio 0.45]
-                              [--viz_samples 10] [--viz_output PATH]
+    python tools/data_prep/freihand_process.py \
+        --freihand_dir /path/to/FreiHAND_pub_v2 \
+        --split both \
+        --fist_ratio 0.45 \
+        --viz_samples 20
 
-输出:
-    FreiHAND_pub_v2/training_finger_distances.json  -- 训练集五指标注
-    FreiHAND_pub_v2/evaluation_finger_distances.json -- 评估集五指标注
-    (可选) viz_output/ -- 可视化抽样示例
+参数说明:
+    --freihand_dir: FreiHAND 数据集根目录 (必须包含 training_xyz.json 等)
+    --split:        处理子集，选项: [train, eval, both]，默认 both
+    --fist_ratio:   握拳时指尖-腕距离与完全伸展的比例，用于估算出 L_min。默认 0.45
+    --viz_samples:  随机抽样可视化的图片数量，0 表示不生成，默认 20
+    --viz_output:   可视化结果保存目录，默认为数据集同级目录下的 viz_output/
+
+输出结果:
+    - [split]_finger_distances.json: 包含每帧的归一化距离和 Lmax/Lmin 信息
+    - [split]_finger_distances_stats.json: 数据统计信息 (均值、标准差等)
 """
 
 import json

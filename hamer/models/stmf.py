@@ -269,6 +269,22 @@ class STMF_HAMER(HAMER):
         self.smoothness_loss = TemporalSmoothnessLoss(weight=cfg.LOSS_WEIGHTS.get('SMOOTHNESS', 10.0))
         self.fk_sensor_loss = FKSensorLoss(weight=cfg.LOSS_WEIGHTS.get('FK_SENSOR', 50.0))
 
+    def training_step(self, joint_batch: Dict, batch_idx: int):
+        """
+        Override standard HaMeR training step to decouple from MoCap discriminator.
+        STMF relies on strong physical priors and doesn't explicitly need adversarial
+        prior training on the temporal tokens, simplifying the loop.
+        """
+        if 'mocap' in joint_batch:
+            # Fall back to base behavior if MoCap is present
+            return super().training_step(joint_batch, batch_idx)
+            
+        # Standard step without mocap dict wrapper
+        batch = joint_batch['img'] if 'img' in joint_batch else joint_batch
+        output = self.forward_step(batch, train=True)
+        loss = self.compute_loss(batch, output, train=True)
+        return loss
+
     def forward_step(self, batch: Dict, train: bool = False) -> Dict:
         """
         Run a forward step of the STMF network.

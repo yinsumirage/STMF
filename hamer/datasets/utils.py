@@ -29,7 +29,8 @@ def expand_to_aspect_ratio(input_shape, target_aspect_ratio=None):
         h_new = h
         w_new = max(h * w_t / h_t, w)
     if h_new < h or w_new < w:
-        breakpoint()
+        print("Warning: Aspect ratio expansion issue detected")
+        pass
     return np.array([w_new, h_new])
 
 def do_augmentation(aug_config: CfgNode) -> Tuple:
@@ -257,7 +258,7 @@ def generate_image_patch_skimage(img: np.array, c_x: float, c_y: float,
     try:
         pad = int(np.linalg.norm(br - ul) / 2 - float(br[1] - ul[1]) / 2) + 1
     except:
-        breakpoint()
+        pass
     if not rot == 0:
         ul -= pad
         br += pad
@@ -303,8 +304,7 @@ def generate_image_patch_skimage(img: np.array, c_x: float, c_y: float,
         print(f'{br=}')
         print(f'{pad=}')
         print(f'{rot=}')
-
-        breakpoint()
+        pass
 
     # resize image
     new_img = resize(new_img, res) # scipy.misc.imresize(new_img, res)
@@ -552,7 +552,7 @@ def get_example(img_path: Union[str, np.ndarray], center_x: float, center_y: flo
         do_flip = True
 
     if width < 1 or height < 1:
-        breakpoint()
+        pass
 
     if do_extreme_crop:
         if extreme_crop_lvl == 0:
@@ -569,7 +569,7 @@ def get_example(img_path: Union[str, np.ndarray], center_x: float, center_y: flo
             # print(f'center_x1: {center_x1}, center_y1: {center_y1}')
             # print(f'keypoints_2d: {keypoints_2d}')
             # print(f'\n\n', flush=True)
-            # breakpoint()
+            # # breakpoint()
             pass
             # print(f'skip ==> width1: {width1}, height1: {height1}, width: {width}, height: {height}')
         else:
