@@ -18,7 +18,7 @@ HO-3D 数据集预处理脚本
 
 输出结果:
     - ho3d_train.npz: 训练集数据，包含 'sensor' 键 (五指归一化距离)。
-    - ho3d_evaluate.npz: 评估集数据，包含 'sensor' 键。
+    - ho3d_evaluation.npz: 评估集数据，包含 'sensor' 键。
 """
 import os
 import glob
@@ -48,8 +48,6 @@ def project_3D_points(cam_mat, pts3D, is_OpenGL_coords=True):
 def compute_bbox(keypoints_2d, padding=0.25):
     """
     Computes a square bounding box given 2d keypoints.
-    Returns (center_x, center_y), scale
-    scale is defined such that bounding_box_size = scale * 200
     """
     min_x = np.min(keypoints_2d[:, 0])
     max_x = np.max(keypoints_2d[:, 0])
@@ -59,8 +57,8 @@ def compute_bbox(keypoints_2d, padding=0.25):
     center = np.array([(min_x + max_x) / 2.0, (min_y + max_y) / 2.0])
     size = max(max_x - min_x, max_y - min_y)
     size = size * (1.0 + padding)
-    scale = size / 200.0
-    return center, scale
+    #scale = size / 200.0
+    return center, size
 
 def process_ho3d_split(base_dir, split_name, output_dir, fist_ratio=0.45):
     print(f"Processing HO-3D {split_name} split...")
@@ -75,7 +73,7 @@ def process_ho3d_split(base_dir, split_name, output_dir, fist_ratio=0.45):
         'imgname': [], 'center': [], 'scale': [],
         'hand_pose': [], 'betas': [],
         'has_hand_pose': [], 'has_betas': [], 'right': [],
-        'keypoints_2d': [], 'keypoints_3d': [], 'personid': [],
+        'hand_keypoints_2d': [], 'hand_keypoints_3d': [], 'personid': [],
         'sensor': [] # Added sensor field
     }
     
@@ -83,7 +81,7 @@ def process_ho3d_split(base_dir, split_name, output_dir, fist_ratio=0.45):
     
     # --- EVALUATION DATA LOADING ---
     eval_joints_map = {}
-    is_eval = split_name == 'evaluate'
+    is_eval = split_name == 'evaluation'
     if is_eval:
         xyz_json = os.path.join(base_dir, 'evaluation_xyz.json')
         txt_path = os.path.join(base_dir, 'evaluation.txt')
@@ -248,8 +246,8 @@ def process_ho3d_split(base_dir, split_name, output_dir, fist_ratio=0.45):
             npz_data['has_hand_pose'].append(has_pose)
             npz_data['has_betas'].append(has_betas)
             npz_data['right'].append(1.0)  # HO-3D is right hand
-            npz_data['keypoints_2d'].append(kps_2d)
-            npz_data['keypoints_3d'].append(kps_3d)
+            npz_data['hand_keypoints_2d'].append(kps_2d)
+            npz_data['hand_keypoints_3d'].append(kps_3d)
             npz_data['personid'].append(seq_idx)
             npz_data['sensor'].append(sensor_res)
             
@@ -285,4 +283,4 @@ if __name__ == '__main__':
     if args.split in ['training', 'both']:
         process_ho3d_split(args.base_dir, 'train', args.output_dir)
     if args.split in ['evaluation', 'both']:
-        process_ho3d_split(args.base_dir, 'evaluate', args.output_dir)
+        process_ho3d_split(args.base_dir, 'evaluation', args.output_dir)

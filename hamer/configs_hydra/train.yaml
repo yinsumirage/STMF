@@ -4,8 +4,8 @@
 # order of defaults determines the order in which configs override each other
 defaults:
   - _self_
-  - data: mix_all.yaml
-  - trainer: ddp.yaml
+  #- data: mix_all.yaml
+  #- trainer: ddp.yaml
   - paths: default.yaml
   - extras: default.yaml
   - hydra: default.yaml
@@ -36,10 +36,6 @@ tags: ["dev"]
 # set False to skip model training
 train: True
 
-# evaluate on test set, using best model weights achieved during training
-# lightning chooses best weights based on the metric specified in checkpoint callback
-test: False
-
 # simply provide checkpoint path to resume training
 ckpt_path: null
 
@@ -48,10 +44,28 @@ seed: null
 
 # Training Parameters
 epochs: 100
-batch_size: 4
+batch_size: 2
 num_workers: 4
 precision: 32
 limit_train_batches: 1.0
-limit_val_batches: 0
+limit_val_batches: 50
+limit_test_batches: 1.0
 log_every_n_steps: 10
 checkpoint: null
+
+# GPU and Strategy
+#devices: [0, 1]
+device: 0
+accelerator: gpu
+strategy: auto #ddp_find_unused_parameters_true
+
+# Checkpoint Frequencies
+checkpoint_step_frequency: 1000
+checkpoint_epoch_frequency: null
+
+# Test after training
+test: True
+
+# Logging Parameters
+exp_name: stmf_run
+run_version: null

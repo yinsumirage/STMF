@@ -48,8 +48,8 @@ def compute_bbox(keypoints_2d, padding=0.25):
     center = np.array([(min_x + max_x) / 2.0, (min_y + max_y) / 2.0])
     size = max(max_x - min_x, max_y - min_y)
     size = size * (1.0 + padding)
-    scale = size / 200.0
-    return center, scale
+    #scale = size / 200.0
+    return center, size
 
 def export_freihand_split(freihand_dir, split_name, output_dir):
     print(f"Exporting FreiHAND {split_name} split to NPZ...")
@@ -106,7 +106,7 @@ def export_freihand_split(freihand_dir, split_name, output_dir):
         'imgname': [], 'center': [], 'scale': [],
         'hand_pose': [], 'betas': [],
         'has_hand_pose': [], 'has_betas': [], 'right': [],
-        'keypoints_2d': [], 'keypoints_3d': [], 'personid': [],
+        'hand_keypoints_2d': [], 'hand_keypoints_3d': [], 'personid': [],
         'sensor': [] # Added sensor field
     }
 
@@ -176,8 +176,8 @@ def export_freihand_split(freihand_dir, split_name, output_dir):
             npz_data['has_hand_pose'].append(has_pose)
             npz_data['has_betas'].append(has_betas)
             npz_data['right'].append(1.0) # FreiHAND is 100% right hand
-            npz_data['keypoints_2d'].append(kps_2d)
-            npz_data['keypoints_3d'].append(kps_3d)
+            npz_data['hand_keypoints_2d'].append(kps_2d)
+            npz_data['hand_keypoints_3d'].append(kps_3d)
             npz_data['personid'].append(personid)
             npz_data['sensor'].append(sensor_res)
 
@@ -202,9 +202,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--freihand_dir', type=str, default='/home/mirage/STMF/_DATA/FreiHAND_pub_v2')
     parser.add_argument('--split', type=str, choices=['training', 'evaluation', 'both'], default='both')
-    parser.add_argument('--output_dir', type=str, default='/home/mirage/STMF/_DATA/FreiHAND_pub_v2')
+    parser.add_argument('--output_dir', type=str, default=None)
     args = parser.parse_args()
     
+    if args.output_dir is None:
+        args.output_dir = args.freihand_dir
+
     if args.split in ['training', 'both']:
         export_freihand_split(args.freihand_dir, 'training', args.output_dir)
     if args.split in ['evaluation', 'both']:

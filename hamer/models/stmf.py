@@ -134,6 +134,14 @@ class CrossModalFusionHead(nn.Module):
             nn.Linear(256, 3)   # Scale, tx, ty
         )
 
+        # Zero-initialize the last layer of each regressor so we start as an identity refinement
+        nn.init.zeros_(self.pose_regressor[-1].weight)
+        nn.init.zeros_(self.pose_regressor[-1].bias)
+        nn.init.zeros_(self.shape_regressor[-1].weight)
+        nn.init.zeros_(self.shape_regressor[-1].bias)
+        nn.init.zeros_(self.cam_regressor[-1].weight)
+        nn.init.zeros_(self.cam_regressor[-1].bias)
+
     def forward(self, query_tokens: torch.Tensor, memory_tokens: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Args:
@@ -271,19 +279,89 @@ class STMF_HAMER(HAMER):
 
     def training_step(self, joint_batch: Dict, batch_idx: int):
         """
-        Override standard HaMeR training step to decouple from MoCap discriminator.
-        STMF relies on strong physical priors and doesn't explicitly need adversarial
-        prior training on the temporal tokens, simplifying the loop.
+        Override standard HaMeR training step to handle manual optimization and detailed logging.
         """
         if 'mocap' in joint_batch:
-            # Fall back to base behavior if MoCap is present
             return super().training_step(joint_batch, batch_idx)
             
-        # Standard step without mocap dict wrapper
-        batch = joint_batch['img'] if 'img' in joint_batch else joint_batch
-        output = self.forward_step(batch, train=True)
-        loss = self.compute_loss(batch, output, train=True)
+        # Access the data dictionary for both forward pass and losses
+        if 'img' in joint_batch and isinstance(joint_batch['img'], dict):
+            data_batch = joint_batch['img']
+        else:
+            data_batch = joint_batch
+        
+
+            
+        # Access optimizer (manual optimization mode)
+        opts = self.optimizers(use_pl_optimizer=True)
+        if isinstance(opts, list):
+            optimizer = opts[0]
+        else:
+            optimizer = opts
+        
+        output = self.forward_step(data_batch, train=True)
+        loss = self.compute_loss(data_batch, output, train=True)
+
+        # # DEBUG: Save data to file for analysis
+        # if not hasattr(self, 'debug_saved'):
+        #     save_data = {
+        #         'joint_batch': {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in joint_batch.items()} if isinstance(joint_batch, dict) else joint_batch,
+        #         'data_batch': {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in data_batch.items()} if isinstance(data_batch, dict) else data_batch,
+        #         'output': {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in output.items()} if isinstance(output, dict) else output
+        #     }
+        #     save_path = '/home/mirage/STMF/tools/debug_training_data.pt'
+        #     torch.save(save_data, save_path)
+        #     print("\n" + "="*50)
+        #     print(f"DEBUG: Saved training variables to {save_path}")
+        #     print("="*50 + "\n")
+        #     self.debug_saved = True
+
+        # Optimization step
+        optimizer.zero_grad()
+        self.manual_backward(loss)
+        
+        if self.cfg.TRAIN.get('GRAD_CLIP_VAL', 0) > 0:
+            gn = torch.nn.utils.clip_grad_norm_(self.get_parameters(), self.cfg.TRAIN.GRAD_CLIP_VAL, error_if_nonfinite=True)
+            self.log('train/grad_norm', gn, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+            
+        optimizer.step()
+
+        # Detailed Logging
+        losses = output.get('losses', {})
+        for loss_name, val in losses.items():
+            self.log(f'train/{loss_name}', val, on_step=True, on_epoch=True, prog_bar=False, logger=True, sync_dist=True)
+
+        if self.global_step > 0 and self.global_step % self.cfg.GENERAL.LOG_STEPS == 0 and self.mesh_renderer is not None:
+            self.tensorboard_logging(data_batch, output, self.global_step, train=True)
+
+        # Main loss to progress bar
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=False, batch_size=data_batch.get('img').shape[0] if isinstance(data_batch.get('img'), torch.Tensor) else None)
+
         return loss
+
+    def validation_step(self, batch: Dict, batch_idx: int) -> Dict:
+        """
+        Validation step for STMF, ensuring metrics are logged per epoch.
+        """
+        output = self.forward_step(batch, train=False)
+        loss = self.compute_loss(batch, output, train=False)
+        
+        losses = output.get('losses', {})
+        for loss_name, val in losses.items():
+            self.log(f'val/{loss_name}', val, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+            
+        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        
+        if batch_idx == 0 and self.mesh_renderer is not None:
+            self.tensorboard_logging(batch, output, self.global_step, train=False)
+
+        return output
+
+    def test_step(self, batch: Dict, batch_idx: int) -> Dict:
+        """
+        Test step, reusing validation logic.
+        """
+        return self.validation_step(batch, batch_idx)
 
     def forward_step(self, batch: Dict, train: bool = False) -> Dict:
         """
@@ -411,6 +489,15 @@ class STMF_HAMER(HAMER):
         
         pred_vertices = output['pred_vertices']
         B = pred_vertices.size(0)
+
+        # Temporary diagnostic prints for zero-loss issue
+        if self.global_step > 0 and self.global_step % 10 == 0:
+            print(f"\n--- [LOSS DIAGNOSTIC Step {self.global_step}] ---")
+            print(f"  Base Total Loss: {base_loss.item():.6f}")
+            print(f"  Weight 2D: {self.cfg.LOSS_WEIGHTS.get('KEYPOINTS_2D', 'NA')}")
+            print(f"  Weight 3D: {self.cfg.LOSS_WEIGHTS.get('KEYPOINTS_3D', 'NA')}")
+            for k, v in losses.items():
+                print(f"  Raw {k}: {v.item():.6f}")
         
         if 'sensor' in batch: # (B, 5)
             sensor_data = batch['sensor']

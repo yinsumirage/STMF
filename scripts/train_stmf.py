@@ -13,6 +13,8 @@ from pathlib import Path
 
 import hydra
 import torch
+torch.set_float32_matmul_precision('high')
+
 import pytorch_lightning as pl
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import Trainer
@@ -61,6 +63,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     model_cfg.GENERAL = CN()
     model_cfg.GENERAL.NUM_WORKERS = getattr(cfg, 'num_workers', 0)
     model_cfg.GENERAL.PREFETCH_FACTOR = 2
+    model_cfg.GENERAL.LOG_STEPS = cfg.get('log_every_n_steps', 10)
     
     if not hasattr(model_cfg, 'LOSS_WEIGHTS'):
         model_cfg.LOSS_WEIGHTS = CN()
@@ -89,11 +92,19 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     log.info("Loading pre-trained frozen backbone weights...")
     model.load_state_dict(state_dict_to_load, strict=False) # strict=False because STMF adds new modules
 
-    logger = TensorBoardLogger(os.path.join(output_dir, 'tensorboard'), name='', version='', default_hp_metric=False)
+    exp_name = cfg.get('exp_name', 'stmf_run')
+    run_version = cfg.get('run_version', None)
+    logger = TensorBoardLogger(
+        os.path.join(output_dir, 'tensorboard'), 
+        name=exp_name, 
+        version=run_version, 
+        default_hp_metric=False
+    )
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=os.path.join(output_dir, 'checkpoints'), 
-        every_n_train_steps=1000, 
+        every_n_train_steps=cfg.get('checkpoint_step_frequency', 1000),
+        every_n_epochs=cfg.get('checkpoint_epoch_frequency', None),
         save_last=True,
     )
     
@@ -105,11 +116,13 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
 
     # Initialize PyTorch Lightning Trainer
     trainer = Trainer(
-        accelerator='gpu',
-        devices=1,
+        accelerator=cfg.get('accelerator', 'gpu'),
+        devices=cfg.get('devices', 1),
+        strategy=cfg.get('strategy', 'auto'),
         max_epochs=cfg.get('epochs', 100),
         limit_train_batches=cfg.get('limit_train_batches', 1.0),
-        limit_val_batches=cfg.get('limit_val_batches', 0), # Default to 0 for STMF
+        limit_val_batches=cfg.get('limit_val_batches', 0), 
+        limit_test_batches=cfg.get('limit_test_batches', 1.0),
         callbacks=callbacks,
         logger=[logger],
         precision=cfg.get('precision', 32),
@@ -117,7 +130,23 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     )
 
     log.info("Starting Temporal Model training!")
-    trainer.fit(model, datamodule=datamodule)
+    trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.get('ckpt_path', None))
+    
+    # 测试部分（双保险）
+    if cfg.get('test', False):
+        log.info("Starting Temporal Model testing on evaluation set!")
+        try:
+            # 优先从刚刚存下的 last.ckpt 进行评估，确保权重是最新的
+            last_ckpt = os.path.join(output_dir, 'checkpoints', 'last.ckpt')
+            if os.path.exists(last_ckpt):
+                trainer.test(model, datamodule=datamodule, ckpt_path=last_ckpt)
+            else:
+                # 如果找不到文件，就用当前内存里的权重跑
+                trainer.test(model, datamodule=datamodule)
+        except Exception as e:
+            log.error(f"Test phase failed with error: {e}")
+            log.warning("Training completed, but evaluation failed. You can run evaluation manually later.")
+        
     log.info("Training process completed.")
 
 

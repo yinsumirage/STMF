@@ -22,32 +22,49 @@ class STMFDataModule(pl.LightningDataModule):
         """
         Setup sequence-aware temporal datasets dynamically parsed from dataset_cfg.
         """
-        if self.train_dataset is None:
-            datasets_to_concat = []
-            
-            # Iterate through all configured datasets in the YAML
-            for ds_name, ds_info in self.dataset_cfg.items():
-                if type(ds_info) != CfgNode or 'DATASET_FILE' not in ds_info:
-                    continue # Skip non-dict config items
-
-                # Extract configs
-                dataset_file = ds_info.DATASET_FILE
-                img_dir = ds_info.IMG_DIR
+        if stage == 'fit' or stage is None:
+            if self.train_dataset is None:
+                datasets_to_concat = []
+                for ds_name, ds_info in self.dataset_cfg.items():
+                    if 'TRAIN' not in ds_name:
+                        continue
+                    if type(ds_info) != CfgNode or 'DATASET_FILE' not in ds_info:
+                        continue
+                    
+                    print(f"Loading {ds_name} STMF Temporal Dataset from: {ds_info.DATASET_FILE}")
+                    ds = TemporalImageDataset(
+                        cfg=self.cfg,
+                        dataset_file=ds_info.DATASET_FILE,
+                        img_dir=ds_info.IMG_DIR,
+                        train=True,
+                        window_size=self.cfg.TRAIN.get('WINDOW_SIZE', 5)
+                    )
+                    datasets_to_concat.append(ds)
                 
-                print(f"Loading {ds_name} STMF Temporal Dataset from: {dataset_file}")
-                ds = TemporalImageDataset(
-                    cfg=self.cfg,
-                    dataset_file=dataset_file,
-                    img_dir=img_dir,
-                    train=True,
-                    window_size=3
-                )
-                datasets_to_concat.append(ds)
-
-            if len(datasets_to_concat) > 0:
-                self.train_dataset = torch.utils.data.ConcatDataset(datasets_to_concat)
-            else:
-                print("WARNING: No datasets loaded into STMF Data Module!")
+                if datasets_to_concat:
+                    self.train_dataset = torch.utils.data.ConcatDataset(datasets_to_concat)
+        
+        if stage in ['fit', 'test'] or stage is None:
+            if self.val_dataset is None:
+                datasets_to_concat = []
+                for ds_name, ds_info in self.dataset_cfg.items():
+                    if 'EVAL' not in ds_name:
+                        continue
+                    if type(ds_info) != CfgNode or 'DATASET_FILE' not in ds_info:
+                        continue
+                    
+                    print(f"Loading {ds_name} STMF Evaluation Dataset from: {ds_info.DATASET_FILE}")
+                    ds = TemporalImageDataset(
+                        cfg=self.cfg,
+                        dataset_file=ds_info.DATASET_FILE,
+                        img_dir=ds_info.IMG_DIR,
+                        train=False,
+                        window_size=self.cfg.TRAIN.get('WINDOW_SIZE', 5)
+                    )
+                    datasets_to_concat.append(ds)
+                
+                if datasets_to_concat:
+                    self.val_dataset = torch.utils.data.ConcatDataset(datasets_to_concat)
 
     def train_dataloader(self) -> Dict:
         """
@@ -66,11 +83,14 @@ class STMFDataModule(pl.LightningDataModule):
 
     def val_dataloader(self) -> Optional[torch.utils.data.DataLoader]:
         if self.val_dataset is not None:
-            val_dataloader = torch.utils.data.DataLoader(
+            return torch.utils.data.DataLoader(
                 self.val_dataset, 
                 batch_size=self.cfg.TRAIN.BATCH_SIZE, 
                 drop_last=False, 
-                num_workers=self.cfg.GENERAL.NUM_WORKERS
+                num_workers=self.cfg.GENERAL.NUM_WORKERS,
+                shuffle=False
             )
-            return val_dataloader
-        return None 
+        return None
+
+    def test_dataloader(self) -> Optional[torch.utils.data.DataLoader]:
+        return self.val_dataloader()
