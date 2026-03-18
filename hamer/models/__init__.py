@@ -1,5 +1,6 @@
 from .mano_wrapper import MANO
 from .hamer import HAMER
+from .stmf import STMF_HAMER
 from .discriminator import Discriminator
 
 from ..utils.download import cache_url
@@ -49,4 +50,37 @@ def load_hamer(checkpoint_path=DEFAULT_CHECKPOINT):
         model_cfg.freeze()
 
     model = HAMER.load_from_checkpoint(checkpoint_path, strict=False, cfg=model_cfg)
+    return model, model_cfg
+
+def load_stmf(checkpoint_path):
+    from pathlib import Path
+    from hamer.configs import get_config
+    
+    # Load the config from the run directory, matching load_hamer's logic exactly
+    model_cfg_path = str(Path(checkpoint_path).parent.parent / 'model_config.yaml')
+    
+    # Check if config already has prefixes to prevent Error: _DATA/_DATA
+    import yaml
+    with open(model_cfg_path, 'r') as f:
+        pre_cfg = yaml.safe_load(f)
+    mano_mean = pre_cfg.get('MANO', {}).get('MEAN_PARAMS', '')
+    should_update = not ('_DATA' in mano_mean)
+    
+    model_cfg = get_config(model_cfg_path, update_cachedir=should_update)
+    
+    # Override some config values, as in load_hamer
+    if (model_cfg.MODEL.BACKBONE.TYPE == 'vit') and ('BBOX_SHAPE' not in model_cfg.MODEL):
+        model_cfg.defrost()
+        model_cfg.MODEL.BBOX_SHAPE = [192, 256]
+        model_cfg.freeze()
+
+    # Match load_hamer(): rely on checkpoint backbone weights instead of an external
+    # pretrain path that may not exist in local inference environments.
+    if ('PRETRAINED_WEIGHTS' in model_cfg.MODEL.BACKBONE):
+        model_cfg.defrost()
+        model_cfg.MODEL.BACKBONE.pop('PRETRAINED_WEIGHTS')
+        model_cfg.freeze()
+
+    # Load STMF model specifically
+    model = STMF_HAMER.load_from_checkpoint(checkpoint_path, strict=False, cfg=model_cfg)
     return model, model_cfg

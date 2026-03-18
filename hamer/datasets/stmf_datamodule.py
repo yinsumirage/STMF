@@ -48,7 +48,7 @@ class STMFDataModule(pl.LightningDataModule):
             if self.val_dataset is None:
                 datasets_to_concat = []
                 for ds_name, ds_info in self.dataset_cfg.items():
-                    if 'EVAL' not in ds_name:
+                    if 'VAL' not in ds_name:
                         continue
                     if type(ds_info) != CfgNode or 'DATASET_FILE' not in ds_info:
                         continue

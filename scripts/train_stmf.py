@@ -15,6 +15,11 @@ import hydra
 import torch
 torch.set_float32_matmul_precision('high')
 
+from yacs.config import CfgNode
+# Latest PyTorch versions (2.6+) require explicit allowlisting of custom classes for safe unpickling
+if hasattr(torch.serialization, 'add_safe_globals'):
+    torch.serialization.add_safe_globals([CfgNode])
+
 import pytorch_lightning as pl
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import Trainer
@@ -64,6 +69,8 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     model_cfg.GENERAL.NUM_WORKERS = getattr(cfg, 'num_workers', 0)
     model_cfg.GENERAL.PREFETCH_FACTOR = 2
     model_cfg.GENERAL.LOG_STEPS = cfg.get('log_every_n_steps', 10)
+    model_cfg.TRAIN.WINDOW_SIZE = cfg.get('window_size', 5)
+    model_cfg.MODEL.BETA_MOMENTUM = cfg.get('beta_momentum', 0.9)
     
     if not hasattr(model_cfg, 'LOSS_WEIGHTS'):
         model_cfg.LOSS_WEIGHTS = CN()

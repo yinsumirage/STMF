@@ -48,6 +48,44 @@ def quat_to_rotmat(quat: torch.Tensor) -> torch.Tensor:
     return rotMat
 
 
+def rotmat_to_aa(rotmat: torch.Tensor) -> torch.Tensor:
+    """
+    Convert rotation matrices to axis-angle vectors.
+    Args:
+        rotmat (torch.Tensor): Tensor of shape (B, 3, 3).
+    Returns:
+        torch.Tensor: Axis-angle vectors of shape (B, 3).
+    """
+    batch_size = rotmat.shape[0]
+    trace = rotmat[:, 0, 0] + rotmat[:, 1, 1] + rotmat[:, 2, 2]
+    cos_theta = ((trace - 1.0) * 0.5).clamp(-1.0 + 1e-6, 1.0 - 1e-6)
+    theta = torch.acos(cos_theta)
+
+    axis = torch.stack([
+        rotmat[:, 2, 1] - rotmat[:, 1, 2],
+        rotmat[:, 0, 2] - rotmat[:, 2, 0],
+        rotmat[:, 1, 0] - rotmat[:, 0, 1],
+    ], dim=1)
+
+    sin_theta = torch.sin(theta)
+    small_angle = sin_theta.abs() < 1e-4
+    scale = torch.empty_like(theta)
+    scale[~small_angle] = theta[~small_angle] / (2.0 * sin_theta[~small_angle])
+    scale[small_angle] = 0.5
+    aa = axis * scale.unsqueeze(1)
+
+    if small_angle.any():
+        identity = torch.eye(3, device=rotmat.device, dtype=rotmat.dtype).unsqueeze(0)
+        delta = rotmat[small_angle] - identity
+        aa[small_angle] = torch.stack([
+            delta[:, 2, 1] - delta[:, 1, 2],
+            delta[:, 0, 2] - delta[:, 2, 0],
+            delta[:, 1, 0] - delta[:, 0, 1],
+        ], dim=1) * 0.5
+
+    return aa.view(batch_size, 3)
+
+
 def rot6d_to_rotmat(x: torch.Tensor) -> torch.Tensor:
     """
     Convert 6D rotation representation to 3x3 rotation matrix.

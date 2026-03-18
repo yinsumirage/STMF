@@ -53,10 +53,24 @@ def test_stmf():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = model.to(device)
     
+    pose_seq = torch.randn(B, T, 48, device=device)
+    sensor_seq = torch.rand(B, T, 5, device=device)
+    sensor_valid_mask = torch.tensor([
+        [False, False, True],
+        [True, True, True],
+    ], device=device)
+    pose_valid_mask = torch.tensor([
+        [False, True],
+        [True, True],
+    ], device=device)
     batch = {
         'img': torch.randn(B, T, C, H, W, device=device),
-        'sensor': torch.rand(B, 5, device=device),
-        'prev_pose': torch.randn(B, 48, device=device),
+        'sensor_seq': sensor_seq,
+        'pose_seq': pose_seq,
+        'sensor_valid_mask': sensor_valid_mask,
+        'pose_valid_mask': pose_valid_mask,
+        'sensor': sensor_seq[:, -1, :],
+        'prev_pose': pose_seq[:, -2, :],
         # Fake ground truths for loss computation:
         'keypoints_2d': torch.randn(B, 21, 3, device=device),
         'keypoints_3d': torch.randn(B, 21, 4, device=device),
@@ -87,6 +101,8 @@ def test_stmf():
     print(f"  pred_keypoints_3d: {output['pred_keypoints_3d'].shape}")
     print(f"  pred_vertices:     {output['pred_vertices'].shape}")
     print(f"  pred_keypoints_2d: {output['pred_keypoints_2d'].shape}")
+    print(f"  pred_pose:         {output['pred_pose'].shape}")
+    print(f"  pred_poses_seq_valid_mask: {output['pred_poses_seq_valid_mask']}")
     
     # Check for NaN
     has_nan = any(torch.isnan(v).any().item() for v in [

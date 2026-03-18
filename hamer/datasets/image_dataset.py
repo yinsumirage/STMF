@@ -55,7 +55,10 @@ class ImageDataset(Dataset):
         self.data = np.load(dataset_file, allow_pickle=True)
 
         self.imgname = self.data['imgname']
-        self.personid = np.zeros(len(self.imgname), dtype=np.int32)
+        if 'personid' in self.data:
+            self.personid = self.data['personid'].astype(np.int32).reshape(-1)
+        else:
+            self.personid = np.zeros(len(self.imgname), dtype=np.int32)
         self.extra_info = self.data.get('extra_info', [{} for _ in range(len(self.imgname))])
 
         self.flip_keypoint_permutation = copy.copy(FLIP_KEYPOINT_PERMUTATION)

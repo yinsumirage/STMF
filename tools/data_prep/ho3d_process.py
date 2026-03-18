@@ -232,10 +232,12 @@ def process_ho3d_split(base_dir, split_name, output_dir, fist_ratio=0.45):
                     result = processor.process_hand_frame(
                         joints_3d, lmin_method='estimate', fist_ratio=fist_ratio
                     )
-                    sensor_res = result['normalized_sensor_values'].astype(np.float32)
+                    sensor_res = np.array(result['normalized_sensor_values']).astype(np.float32)
                 except Exception as e:
-                    error_count += 1
-                    continue
+                    sensor_res = np.zeros(5, dtype=np.float32)
+                
+                # Training split currently doesn't pre-calculate full vertices
+                hand_verts = np.zeros((778, 3), dtype=np.float32)
 
             # Append to lists
             npz_data['imgname'].append(img_rel_path)

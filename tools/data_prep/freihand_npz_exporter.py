@@ -148,12 +148,12 @@ def export_freihand_split(freihand_dir, split_name, output_dir):
             hand_pose = np.zeros(48, dtype=np.float32)
             betas = np.zeros(10, dtype=np.float32)
 
-            if mano is not None and len(mano) > idx:
-                has_pose = 1.0
-                has_betas = 1.0
+            if split_name == 'training' and mano is not None and len(mano) > idx:
+                mano_params = np.array(mano[idx], dtype=np.float32).flatten()
                 
-                mano_params = np.array(mano[idx], dtype=np.float32)
                 if len(mano_params) >= 58:
+                    has_pose = 1.0
+                    has_betas = 1.0
                     hand_pose = mano_params[:48]
                     betas = mano_params[48:58]
             
