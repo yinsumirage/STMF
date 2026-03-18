@@ -48,10 +48,13 @@ batch_size: 2
 num_workers: 4
 precision: 32
 limit_train_batches: 1.0
-limit_val_batches: 50
+limit_val_batches: 0
 limit_test_batches: 1.0
 log_every_n_steps: 10
 checkpoint: null
+run_validation: False
+num_sanity_val_steps: 0
+log_lr: False
 
 # GPU and Strategy
 #devices: [0, 1]
@@ -64,7 +67,7 @@ checkpoint_step_frequency: 1000
 checkpoint_epoch_frequency: null
 
 # Test after training
-test: True
+test: False
 
 # Logging Parameters
 exp_name: stmf_run

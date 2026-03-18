@@ -86,6 +86,13 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     log.info(f"Initializing STMF Data Module...")
     datamodule = STMFDataModule(model_cfg, dataset_cfg)
 
+    run_validation = bool(cfg.get('run_validation', False))
+    limit_val_batches = cfg.get('limit_val_batches', 0.0 if not run_validation else 1.0)
+    num_sanity_val_steps = cfg.get('num_sanity_val_steps', 0 if not run_validation else 2)
+    log_lr = bool(cfg.get('log_lr', False))
+    if run_validation:
+        log.warning("run_validation=True: this only makes sense if your VAL datasets contain supervised targets. Official evaluation splits do not provide meaningful val_loss.")
+
     log.info(f"Initializing STMF Model over HaMeR Backbone...")
     model = STMF_HAMER(model_cfg, init_renderer=False)
     
@@ -109,14 +116,17 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     )
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath=os.path.join(output_dir, 'checkpoints'), 
+        dirpath=os.path.join(output_dir, 'checkpoints'),
         every_n_train_steps=cfg.get('checkpoint_step_frequency', 1000),
         every_n_epochs=cfg.get('checkpoint_epoch_frequency', None),
+        save_top_k=-1,
         save_last=True,
+        filename='step_{step}'
     )
     
-    lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval='step')
-    callbacks = [checkpoint_callback, lr_monitor]
+    callbacks = [checkpoint_callback]
+    if log_lr:
+        callbacks.append(pl.callbacks.LearningRateMonitor(logging_interval='step'))
 
     # Allow adding new keys to the config for easy override
     OmegaConf.set_struct(cfg, False)
@@ -128,8 +138,10 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
         strategy=cfg.get('strategy', 'auto'),
         max_epochs=cfg.get('epochs', 100),
         limit_train_batches=cfg.get('limit_train_batches', 1.0),
-        limit_val_batches=cfg.get('limit_val_batches', 0), 
+        limit_val_batches=limit_val_batches,
         limit_test_batches=cfg.get('limit_test_batches', 1.0),
+        num_sanity_val_steps=num_sanity_val_steps,
+        check_val_every_n_epoch=1 if run_validation else None,
         callbacks=callbacks,
         logger=[logger],
         precision=cfg.get('precision', 32),
@@ -139,7 +151,8 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     log.info("Starting Temporal Model training!")
     trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.get('ckpt_path', None))
     
-    # 测试部分（双保险）
+    # Training uses loss-based supervision only. Official evaluation should be run explicitly
+    # through scripts/eval_stmf.py because the public evaluation splits are not supervised val sets.
     if cfg.get('test', False):
         log.info("Starting Temporal Model testing on evaluation set!")
         try:
