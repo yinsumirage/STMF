@@ -1,3 +1,17 @@
+"""
+Temporal dataset wrapper used by the STMF pipeline.
+
+This file extends `ImageDataset` and is used by:
+- `scripts/train_stmf.py`
+- `scripts/eval_stmf.py`
+
+Main responsibilities:
+- build sliding windows
+- keep sequence boundaries correct
+- generate `sensor_seq` / `pose_seq`
+- provide `temporal_indices`, `sequence_key`, and history valid masks
+"""
+
 import os
 import copy
 import json

@@ -1,10 +1,27 @@
 """
+STMF / HaMeR evaluation entrypoint.
+
+Examples:
+
+Evaluate STMF:
 python scripts/eval_stmf.py \
     --checkpoint /home/mirage/STMF/logs/train/runs/你的日期/checkpoints/last.ckpt \
     --dataset FREIHAND-VAL,HO3D-VAL \
     --batch_size 64 \
     --window_size 5 \
     --results_folder results_stmf_final
+
+Evaluate original HaMeR on the same data pipeline:
+python scripts/eval_stmf.py \
+    --base_hamer \
+    --checkpoint /path/to/hamer.ckpt \
+    --dataset HO3D-VAL \
+    --batch_size 64 \
+    --results_folder results_hamer_v3
+
+Notes:
+- Dataset paths come from `hamer/configs/datasets_stmf.yaml`.
+- STMF evaluation is stateful by default; add `--stateless` to disable autoregressive history.
 """
 
 import argparse
@@ -25,11 +42,9 @@ from yacs.config import CfgNode as CN
 if hasattr(torch.serialization, 'add_safe_globals'):
     torch.serialization.add_safe_globals([CN])
 
-from hamer.configs import dataset_eval_config, get_config
 from hamer.datasets import create_dataset
 from hamer.utils import Evaluator, recursive_to
-from hamer.models import HAMER, load_stmf, DEFAULT_CHECKPOINT
-from hamer.models.stmf import STMF_HAMER
+from hamer.models import load_hamer, load_stmf
 
 
 def extract_sample(batch, sample_idx: int):
@@ -39,6 +54,17 @@ def extract_sample(batch, sample_idx: int):
         return batch[sample_idx:sample_idx + 1]
     if isinstance(batch, list):
         return batch[sample_idx]
+    return batch
+
+
+def prepare_base_hamer_batch(batch: Dict) -> Dict:
+    """
+    Reuse the STMF temporal dataset for baseline HaMeR evaluation by dropping the
+    temporal window and keeping only the current frame image.
+    """
+    if 'img' in batch and isinstance(batch['img'], torch.Tensor) and batch['img'].dim() == 5:
+        batch = dict(batch)
+        batch['img'] = batch['img'][:, -1, ...]
     return batch
 
 
@@ -83,13 +109,17 @@ def main():
     parser.add_argument('--shuffle', dest='shuffle', action='store_true', default=False, help='Shuffle the dataset during evaluation')
     parser.add_argument('--exp_name', type=str, default=None, help='Experiment name')
     parser.add_argument('--stateless', dest='stateless', action='store_true', default=False, help='Disable autoregressive pose history and use dataset pose_seq as-is')
+    parser.add_argument('--base_hamer', dest='base_hamer', action='store_true', default=False, help='Evaluate the original HaMeR model on datasets_stmf.yaml using only the current frame image')
 
     args = parser.parse_args()
     os.makedirs(args.results_folder, exist_ok=True)
 
     # Load model
     print(f"Loading model from {args.checkpoint}...")
-    model, model_cfg = load_stmf(args.checkpoint)
+    if args.base_hamer:
+        model, model_cfg = load_hamer(args.checkpoint)
+    else:
+        model, model_cfg = load_stmf(args.checkpoint)
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model = model.to(device)
@@ -136,24 +166,31 @@ def run_eval(model, model_cfg, dataset_cfg, dataset_name, device, args):
         pose_cache = {}
         beta_cache = {}
         for i, batch in enumerate(tqdm(dataloader, desc=dataset_name)):
-            batch_size = batch['img'].shape[0]
-            for sample_idx in range(batch_size):
-                sample = extract_sample(batch, sample_idx)
-                sample = recursive_to(sample, device)
-                if not args.stateless:
-                    sample = inject_stateful_history(sample, pose_cache, beta_cache)
-
+            if args.base_hamer:
+                batch = recursive_to(batch, device)
+                batch = prepare_base_hamer_batch(batch)
                 with torch.no_grad():
-                    out = model(sample)
+                    out = model(batch)
+                evaluator(out, batch)
+            else:
+                batch_size = batch['img'].shape[0]
+                for sample_idx in range(batch_size):
+                    sample = extract_sample(batch, sample_idx)
+                    sample = recursive_to(sample, device)
+                    if not args.stateless:
+                        sample = inject_stateful_history(sample, pose_cache, beta_cache)
 
-                evaluator(out, sample)
-                if 'pred_pose' in out and 'idx' in sample:
-                    pose_cache[int(sample['idx'].item())] = out['pred_pose'][0].detach().cpu()
-                if 'pred_mano_params' in out and 'betas' in out['pred_mano_params'] and 'sequence_key' in sample:
-                    sequence_key = sample['sequence_key']
-                    if isinstance(sequence_key, list):
-                        sequence_key = sequence_key[0]
-                    beta_cache[str(sequence_key)] = out['pred_mano_params']['betas'][0].detach().cpu()
+                    with torch.no_grad():
+                        out = model(sample)
+
+                    evaluator(out, sample)
+                    if 'pred_pose' in out and 'idx' in sample:
+                        pose_cache[int(sample['idx'].item())] = out['pred_pose'][0].detach().cpu()
+                    if 'pred_mano_params' in out and 'betas' in out['pred_mano_params'] and 'sequence_key' in sample:
+                        sequence_key = sample['sequence_key']
+                        if isinstance(sequence_key, list):
+                            sequence_key = sequence_key[0]
+                        beta_cache[str(sequence_key)] = out['pred_mano_params']['betas'][0].detach().cpu()
 
             if i % args.log_freq == args.log_freq - 1:
                 evaluator.log()

@@ -1,5 +1,9 @@
 # STMF Refactor And Final Design
 
+这份文档关注“为什么这样设计”和“模型/数据逻辑具体改了什么”。
+如果你只是想知道当前怎么运行，请先看 `01_current_status.md`。
+如果你想知道某个功能对应仓库里的哪个文件，请看 `03_code_structure.md`。
+
 ## 背景
 
 本轮重构的核心目标，是把 STMF 从“当前帧视觉 + 历史视觉 buffer + 历史 pose + 历史 sensor 的大一锅融合”，收敛成一个更适合实时场景的小型纠偏器：

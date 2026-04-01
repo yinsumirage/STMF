@@ -1,31 +1,31 @@
-HO3D-TRAIN:
-  TYPE: TemporalImageDataset
-  DATASET_FILE: /home/mirage/STMF/_DATA/HO-3D_v3/ho3d_train.npz
-  IMG_DIR: /home/mirage/STMF/_DATA/HO-3D_v3/
-  WEIGHT: 1.0
-FREIHAND-TRAIN:
-  TYPE: TemporalImageDataset
-  DATASET_FILE: /home/mirage/STMF/_DATA/FreiHAND_pub_v2/freihand_training.npz
-  IMG_DIR: /home/mirage/STMF/_DATA/FreiHAND_pub_v2/
-  WEIGHT: 1.0
-
-HO3D-VAL:
-  TYPE: TemporalImageDataset
-  DATASET_FILE: /home/mirage/STMF/_DATA/HO-3D_v3/ho3d_evaluation.npz
-  IMG_DIR: /home/mirage/STMF/_DATA/HO-3D_v3/
-  WEIGHT: 1.0
-FREIHAND-VAL:
-  TYPE: TemporalImageDataset
-  DATASET_FILE: /home/mirage/STMF/_DATA/FreiHAND_pub_v2/freihand_evaluation.npz
-  IMG_DIR: /home/mirage/STMF/_DATA/FreiHAND_pub_v2/
-  WEIGHT: 1.0
-
-
 # HO3D-TRAIN:
 #   TYPE: TemporalImageDataset
-#   DATASET_FILE: /data/hand_data/HO-3D_v3/ho3d_train.npz
-#   IMG_DIR: /data/hand_data/HO-3D_v3/
+#   DATASET_FILE: /home/mirage/STMF/_DATA/HO-3D_v3/ho3d_train.npz
+#   IMG_DIR: /home/mirage/STMF/_DATA/HO-3D_v3/
 #   WEIGHT: 1.0
+# FREIHAND-TRAIN:
+#   TYPE: TemporalImageDataset
+#   DATASET_FILE: /home/mirage/STMF/_DATA/FreiHAND_pub_v2/freihand_training.npz
+#   IMG_DIR: /home/mirage/STMF/_DATA/FreiHAND_pub_v2/
+#   WEIGHT: 1.0
+
+# HO3D-VAL:
+#   TYPE: TemporalImageDataset
+#   DATASET_FILE: /home/mirage/STMF/_DATA/HO-3D_v3/ho3d_evaluation.npz
+#   IMG_DIR: /home/mirage/STMF/_DATA/HO-3D_v3/
+#   WEIGHT: 1.0
+# FREIHAND-VAL:
+#   TYPE: TemporalImageDataset
+#   DATASET_FILE: /home/mirage/STMF/_DATA/FreiHAND_pub_v2/freihand_evaluation.npz
+#   IMG_DIR: /home/mirage/STMF/_DATA/FreiHAND_pub_v2/
+#   WEIGHT: 1.0
+
+
+HO3D-TRAIN:
+  TYPE: TemporalImageDataset
+  DATASET_FILE: /data/hand_data/HO-3D_v3/ho3d_train.npz
+  IMG_DIR: /data/hand_data/HO-3D_v3/
+  WEIGHT: 1.0
 # FREIHAND-TRAIN:
 #   TYPE: TemporalImageDataset
 #   DATASET_FILE: /data/hand_data/FreiHAND_pub_v2/freihand_training.npz
@@ -42,3 +42,9 @@ FREIHAND-VAL:
 #   DATASET_FILE: /data/hand_data/FreiHAND_pub_v2/freihand_evaluation.npz
 #   IMG_DIR: /data/hand_data/FreiHAND_pub_v2/
 #   WEIGHT: 1.0
+
+HO3D-VAL:
+  TYPE: TemporalImageDataset
+  DATASET_FILE: /data/hamer_evaluation_data/ho3d_val.npz
+  IMG_DIR: /data/hand_data/HO-3D_v3/evaluation
+  WEIGHT: 1.0

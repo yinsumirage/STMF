@@ -1,13 +1,13 @@
 FREIHAND-VAL:
     TYPE: ImageDataset
-    DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/freihand_val_with_gt.npz
-    IMG_DIR: /home/mirage/STMF/_DATA/FreiHAND_pub_v2/evaluation/rgb/
+    DATASET_FILE: /data/hamer_evaluation_data/freihand_val.npz
+    IMG_DIR: /data/hand_data/FreiHAND_pub_v2/evaluation/rgb/
     KEYPOINT_LIST: [0] # Dummy
 
 HO3D-VAL:
     TYPE: ImageDataset
-    DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/ho3d_val.npz
-    IMG_DIR: /home/user/datasets/HO3D_v2/evaluation/
+    DATASET_FILE: /data/hamer_evaluation_data/ho3d_val.npz
+    IMG_DIR: /data/hand_data/HO-3D_v3/evaluation
     KEYPOINT_LIST: [0] # Dummy
 
 EGO4D-TEST-ALL:

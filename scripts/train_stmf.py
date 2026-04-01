@@ -1,3 +1,21 @@
+"""
+STMF training entrypoint.
+
+Typical usage:
+
+conda run -n STMF python scripts/train_stmf.py \
+  checkpoint=/path/to/hamer.ckpt \
+  batch_size=64 \
+  devices=2 \
+  epochs=20 \
+  window_size=5
+
+Notes:
+- This script trains the STMF model on top of a HaMeR checkpoint.
+- Dataset paths come from `hamer/configs/datasets_stmf.yaml`.
+- Official evaluation should be run separately with `scripts/eval_stmf.py`.
+"""
+
 from typing import Optional, Tuple
 import pyrootutils
 

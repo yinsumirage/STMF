@@ -1,3 +1,16 @@
+"""
+Shared image dataset loader for both HaMeR and STMF pipelines.
+
+How it is used:
+- `scripts/eval.py` / `scripts/eval_stmf.py` read NPZ metadata through this file.
+- `TemporalImageDataset` extends this class for STMF sequence windows.
+
+Important conventions:
+- NPZ `center` / `scale` follow the HaMeR format.
+- `scale` is expected to be bbox width/height in pixels before dividing by 200.
+- At evaluation time this loader now tolerates `.png/.jpg/.jpeg` mismatches and can skip missing images.
+"""
+
 import copy
 import os
 import numpy as np
@@ -24,6 +37,30 @@ DEFAULT_MEAN = 255. * np.array([0.485, 0.456, 0.406])
 DEFAULT_STD = 255. * np.array([0.229, 0.224, 0.225])
 DEFAULT_IMG_SIZE = 256
 
+
+def resolve_image_path(img_dir: str, image_file_rel: str) -> str:
+    """
+    Resolve image path while tolerating png/jpg extension mismatches between
+    packaged NPZ metadata and the local extracted dataset.
+    """
+    image_file = os.path.join(img_dir, image_file_rel)
+    if os.path.exists(image_file):
+        return image_file
+
+    root, ext = os.path.splitext(image_file)
+    alt_exts = []
+    if ext.lower() == '.png':
+        alt_exts = ['.jpg', '.jpeg']
+    elif ext.lower() in ('.jpg', '.jpeg'):
+        alt_exts = ['.png']
+
+    for alt_ext in alt_exts:
+        alt_path = root + alt_ext
+        if os.path.exists(alt_path):
+            return alt_path
+
+    return image_file
+
 class ImageDataset(Dataset):
 
     def __init__(self,
@@ -45,6 +82,7 @@ class ImageDataset(Dataset):
         super(ImageDataset, self).__init__()
         self.train = train
         self.cfg = cfg
+        self.skip_missing_images = kwargs.get('skip_missing_images', not train)
 
         self.img_size = cfg.MODEL.IMAGE_SIZE
         self.mean = 255. * np.array(self.cfg.MODEL.IMAGE_MEAN)
@@ -52,7 +90,9 @@ class ImageDataset(Dataset):
         self.rescale_factor = rescale_factor
 
         self.img_dir = img_dir
-        self.data = np.load(dataset_file, allow_pickle=True)
+        loaded = np.load(dataset_file, allow_pickle=True)
+        self.data = {key: loaded[key] for key in loaded.files}
+        loaded.close()
 
         self.imgname = self.data['imgname']
         if 'personid' in self.data:
@@ -106,6 +146,63 @@ class ImageDataset(Dataset):
             hand_keypoints_3d = np.zeros((len(self.center), 21, 4), dtype=np.float32)
 
         self.keypoints_3d = hand_keypoints_3d
+        self._filter_missing_images()
+
+    def _filter_missing_images(self) -> None:
+        if not self.skip_missing_images:
+            return
+
+        num_samples = len(self.imgname)
+        keep_mask = np.ones(num_samples, dtype=np.bool_)
+        missing_examples = []
+
+        for idx in range(num_samples):
+            raw_name = self.imgname[idx]
+            image_file_rel = raw_name.decode('utf-8') if isinstance(raw_name, bytes) else str(raw_name)
+            image_file = resolve_image_path(self.img_dir, image_file_rel)
+            if not os.path.isfile(image_file):
+                keep_mask[idx] = False
+                if len(missing_examples) < 5:
+                    missing_examples.append(image_file)
+
+        missing_count = int((~keep_mask).sum())
+        if missing_count == 0:
+            return
+
+        self._apply_sample_mask(keep_mask)
+        print(f"Skipping {missing_count} samples with missing images from {self.img_dir}")
+        for image_file in missing_examples:
+            print(f"  missing: {image_file}")
+
+    def _apply_sample_mask(self, keep_mask: np.ndarray) -> None:
+        original_len = keep_mask.shape[0]
+
+        def maybe_mask(value):
+            if isinstance(value, np.ndarray):
+                if value.ndim > 0 and value.shape[0] == original_len:
+                    return value[keep_mask]
+                return value
+            if isinstance(value, list) and len(value) == original_len:
+                return [v for v, keep in zip(value, keep_mask.tolist()) if keep]
+            return value
+
+        for attr in [
+            'imgname',
+            'personid',
+            'extra_info',
+            'center',
+            'scale',
+            'right',
+            'hand_pose',
+            'has_hand_pose',
+            'betas',
+            'has_betas',
+            'keypoints_2d',
+            'keypoints_3d',
+        ]:
+            setattr(self, attr, maybe_mask(getattr(self, attr)))
+
+        self.data = {key: maybe_mask(value) for key, value in self.data.items()}
 
     def __len__(self) -> int:
         return len(self.scale)
@@ -118,7 +215,7 @@ class ImageDataset(Dataset):
             image_file_rel = self.imgname[idx].decode('utf-8')
         except AttributeError:
             image_file_rel = self.imgname[idx]
-        image_file = os.path.join(self.img_dir, image_file_rel)
+        image_file = resolve_image_path(self.img_dir, image_file_rel)
         keypoints_2d = self.keypoints_2d[idx].copy()
         keypoints_3d = self.keypoints_3d[idx].copy()
 

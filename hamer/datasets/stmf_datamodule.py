@@ -1,3 +1,13 @@
+"""
+PyTorch Lightning datamodule for STMF.
+
+Used by:
+- `scripts/train_stmf.py`
+
+This datamodule bypasses the original HaMeR WebDataset tar pipeline and instead
+loads sequence-aware NPZ datasets through `TemporalImageDataset`.
+"""
+
 import os
 from pathlib import Path
 from typing import Dict, Optional

@@ -1,3 +1,17 @@
+"""
+STMF model definition.
+
+This file is the core implementation of the temporal refinement model used by:
+- `scripts/train_stmf.py`
+- `scripts/eval_stmf.py`
+
+Main responsibilities:
+- tokenize history pose / sensor inputs
+- fuse them with current-frame visual tokens
+- predict pose / camera residuals on top of HaMeR
+- compute STMF-specific losses such as FK sensor loss and smoothness loss
+"""
+
 import torch
 import torch.nn as nn
 import math
