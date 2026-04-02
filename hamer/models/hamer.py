@@ -1,6 +1,6 @@
 import torch
 import pytorch_lightning as pl
-from typing import Any, Dict, Mapping, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple, Union
 
 from yacs.config import CfgNode
 
@@ -80,11 +80,13 @@ class HAMER(pl.LightningModule):
         optimizer = torch.optim.AdamW(params=param_groups,
                                         # lr=self.cfg.TRAIN.LR,
                                         weight_decay=self.cfg.TRAIN.WEIGHT_DECAY)
-        optimizer_disc = torch.optim.AdamW(params=self.discriminator.parameters(),
-                                            lr=self.cfg.TRAIN.LR,
-                                            weight_decay=self.cfg.TRAIN.WEIGHT_DECAY)
+        if self.cfg.LOSS_WEIGHTS.ADVERSARIAL > 0:
+            optimizer_disc = torch.optim.AdamW(params=self.discriminator.parameters(),
+                                                lr=self.cfg.TRAIN.LR,
+                                                weight_decay=self.cfg.TRAIN.WEIGHT_DECAY)
+            return optimizer, optimizer_disc
 
-        return optimizer, optimizer_disc
+        return optimizer
 
     def forward_step(self, batch: Dict, train: bool = False) -> Dict:
         """
@@ -287,7 +289,7 @@ class HAMER(pl.LightningModule):
         optimizer.step()
         return loss_disc.detach()
 
-    def training_step(self, joint_batch: Dict, batch_idx: int) -> Dict:
+    def training_step(self, joint_batch: Union[Dict, Mapping[str, Any]], batch_idx: int) -> Dict:
         """
         Run a full training step
         Args:
@@ -297,8 +299,12 @@ class HAMER(pl.LightningModule):
         Returns:
             Dict: Dictionary containing regression output.
         """
-        batch = joint_batch['img']
-        mocap_batch = joint_batch['mocap']
+        if isinstance(joint_batch, Mapping) and 'img' in joint_batch and isinstance(joint_batch['img'], Mapping):
+            batch = joint_batch['img']
+            mocap_batch: Optional[Dict] = joint_batch.get('mocap')
+        else:
+            batch = joint_batch
+            mocap_batch = None
         optimizer = self.optimizers(use_pl_optimizer=True)
         if self.cfg.LOSS_WEIGHTS.ADVERSARIAL > 0:
             optimizer, optimizer_disc = optimizer
@@ -326,6 +332,8 @@ class HAMER(pl.LightningModule):
             self.log('train/grad_norm', gn, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         optimizer.step()
         if self.cfg.LOSS_WEIGHTS.ADVERSARIAL > 0:
+            if mocap_batch is None:
+                raise RuntimeError('Adversarial training requires a mocap batch, but none was provided.')
             loss_disc = self.training_step_discriminator(mocap_batch, pred_mano_params['hand_pose'].reshape(batch_size, -1), pred_mano_params['betas'].reshape(batch_size, -1), optimizer_disc)
             output['losses']['loss_gen'] = loss_adv
             output['losses']['loss_disc'] = loss_disc

@@ -9,17 +9,34 @@ python tools/data_prep/ho3d_process.py \
   --base_dir /home/mirage/STMF/_DATA/HO-3D_v3 \
   --split both \
   --bbox_source vitpose \
-  --body_detector regnety
+  --body_detector regnety \
+  --output_format both
+
+如果要生成 HaMeR 原生训练 tar:
+python tools/data_prep/ho3d_process.py \
+  --base_dir /data/hand_data/HO-3D_v3 \
+  --split both \
+  --bbox_source vitpose \
+  --body_detector regnety \
+  --output_format webdataset
 
 参数说明:
     --base_dir:   HO-3D 数据集根目录。
                   注意对于 evaluation split，此目录下必须包含 evaluation_xyz.json 和 evaluation.txt。
     --split:      处理子集，选项: [training, evaluation, both]，默认 both
     --output_dir: 结果保存目录，默认保存在 base_dir 下。
+    --output_format:
+                  `npz` 只导出 NPZ；
+                  `webdataset` 只导出 HaMeR 原生 tar；
+                  `both` 两者都导出。
+    --tar_shard_size:
+                  每个 webdataset tar shard 的最大样本数。
 
 输出结果:
     - ho3d_train.npz: 训练集数据，包含 'sensor' 键 (五指归一化距离)。
     - ho3d_evaluation.npz: 评估集数据，包含 'sensor' 键。
+    - 可选导出 HaMeR 原生 WebDataset tar，用于 `scripts/train.py`。
+    - 导出 webdataset 时，会额外生成 `datasets_tar_ho3d_v3.yaml` 供 `scripts/train.py` 使用。
 
 说明:
     - `--bbox_source gt`:
@@ -33,6 +50,7 @@ import os
 import glob
 import json
 import pickle
+import textwrap
 import numpy as np
 import cv2
 import argparse
@@ -185,6 +203,8 @@ def process_ho3d_split(
     bbox_source='gt',
     body_detector='regnety',
     detector_rescale_factor=2.0,
+    output_format='npz',
+    tar_shard_size=1000,
 ):
     print(f"Processing HO-3D {split_name} split...")
     split_dir = os.path.join(base_dir, split_name)
@@ -386,9 +406,6 @@ def process_ho3d_split(
         print(f"  Detector bbox success: {detector_success_count}")
         print(f"  Detector bbox fallback-to-gt: {detector_fallback_count}")
 
-    os.makedirs(output_dir, exist_ok=True)
-    npz_out_path = os.path.join(output_dir, f'ho3d_{split_name}.npz')
-
     final_npz = {}
     for k, v in npz_data.items():
         if k == 'imgname':
@@ -396,9 +413,120 @@ def process_ho3d_split(
         else:
             dtype = np.int32 if k == 'personid' else np.float32
             final_npz[k] = np.stack(v).astype(dtype)
+    os.makedirs(output_dir, exist_ok=True)
 
-    np.savez(npz_out_path, **final_npz)
-    print(f"Saved npz to {npz_out_path}")
+    if output_format in ('npz', 'both'):
+        npz_out_path = os.path.join(output_dir, f'ho3d_{split_name}.npz')
+        np.savez(npz_out_path, **final_npz)
+        print(f"Saved npz to {npz_out_path}")
+
+    tar_urls = None
+    if output_format in ('webdataset', 'both'):
+        tar_urls = write_webdataset_split(
+            base_dir=base_dir,
+            split_name=split_name,
+            output_dir=output_dir,
+            final_npz=final_npz,
+            shard_size=tar_shard_size,
+        )
+
+    return final_npz, tar_urls
+
+
+def write_webdataset_split(base_dir, split_name, output_dir, final_npz, shard_size=1000):
+    import webdataset as wds
+
+    split_tag = 'train' if split_name == 'train' else 'val'
+    tar_dir = os.path.join(output_dir, 'dataset_tars', f'ho3d-{split_tag}')
+    os.makedirs(tar_dir, exist_ok=True)
+    pattern = os.path.join(tar_dir, '%06d.tar')
+
+    print(f"Saving WebDataset shards to {tar_dir} (shard_size={shard_size})")
+    with wds.ShardWriter(pattern, maxcount=shard_size) as sink:
+        num_samples = len(final_npz['imgname'])
+        for idx in tqdm(range(num_samples), desc=f"Writing {split_name} tar", leave=False):
+            rel_path = final_npz['imgname'][idx]
+            if isinstance(rel_path, bytes):
+                rel_path = rel_path.decode('utf-8')
+            image_path = os.path.join(base_dir, rel_path)
+            if not os.path.exists(image_path):
+                continue
+
+            with open(image_path, 'rb') as f:
+                image_bytes = f.read()
+
+            ext = Path(image_path).suffix.lower().lstrip('.')
+            if ext == 'jpeg':
+                ext = 'jpg'
+            if ext not in ('jpg', 'png'):
+                ext = 'jpg'
+
+            sample = {
+                'center': final_npz['center'][idx].astype(np.float32),
+                # WebDataset pipeline expects scale already normalized by 200.
+                'scale': (final_npz['scale'][idx].astype(np.float32) / 200.0),
+                'hand_pose': final_npz['hand_pose'][idx].astype(np.float32),
+                'betas': final_npz['betas'][idx].astype(np.float32),
+                'has_hand_pose': np.array(final_npz['has_hand_pose'][idx], dtype=np.float32),
+                'has_betas': np.array(final_npz['has_betas'][idx], dtype=np.float32),
+                'right': np.array(final_npz['right'][idx], dtype=np.float32),
+                'keypoints_2d': final_npz['hand_keypoints_2d'][idx].astype(np.float32),
+                'keypoints_3d': final_npz['hand_keypoints_3d'][idx].astype(np.float32),
+                'sensor': final_npz['sensor'][idx].astype(np.float32),
+                'extra_info': {
+                    'imgname_rel': rel_path,
+                    'personid': int(final_npz['personid'][idx]),
+                },
+            }
+
+            key = rel_path.replace('/', '__')
+            sink.write({
+                '__key__': key,
+                ext: image_bytes,
+                'data.pyd': [sample],
+            })
+
+    tar_urls = sorted(glob.glob(os.path.join(tar_dir, '*.tar')))
+    print(f"Saved {len(tar_urls)} tar shards to {tar_dir}")
+    return tar_urls
+
+
+def write_webdataset_dataset_config(output_dir, train_urls=None, val_urls=None, train_epoch_size=None):
+    config_path = os.path.join(output_dir, 'datasets_tar_ho3d_v3.yaml')
+
+    def emit_urls(urls):
+        return '\n'.join([f'    - {url}' for url in urls])
+
+    chunks = []
+    if train_urls:
+        chunks.append("HO3D-TRAIN:")
+        chunks.append("  TYPE: ImageDataset")
+        chunks.append("  URLS:")
+        chunks.append(emit_urls(train_urls))
+        if train_epoch_size is not None:
+            chunks.append(f"  epoch_size: {int(train_epoch_size):,}".replace(',', '_'))
+    if val_urls:
+        if chunks:
+            chunks.append("")
+        chunks.append("HO3D-VAL:")
+        chunks.append("  TYPE: ImageDataset")
+        chunks.append("  URLS:")
+        chunks.append(emit_urls(val_urls))
+
+    with open(config_path, 'w') as f:
+        f.write('\n'.join(chunks) + '\n')
+
+    print(f"Saved dataset config to {config_path}")
+    print(textwrap.dedent(f"""
+    Training example:
+      conda run -n STMF python scripts/train.py \\
+        experiment=hamer_vit_transformer \\
+        data=ho3d_only \\
+        dataset_config_name={config_path} \\
+        checkpoint=_DATA/hamer_ckpts/checkpoints/hamer.ckpt \\
+        LOSS_WEIGHTS.ADVERSARIAL=0
+    """).strip())
+    return config_path
 
 
 if __name__ == '__main__':
@@ -411,6 +539,8 @@ if __name__ == '__main__':
     parser.add_argument('--detector_rescale_factor', type=float, default=2.0, help='Hand bbox expansion factor used by the demo pipeline before cropping')
     parser.add_argument('--scale_mult_x', type=float, default=1.57, help='Extra width multiplier to align HO3D crops with HaMeR bbox convention')
     parser.add_argument('--scale_mult_y', type=float, default=1.55, help='Extra height multiplier to align HO3D crops with HaMeR bbox convention')
+    parser.add_argument('--output_format', type=str, choices=['npz', 'webdataset', 'both'], default='npz')
+    parser.add_argument('--tar_shard_size', type=int, default=1000, help='Max samples per exported webdataset tar shard')
     args = parser.parse_args()
 
     if args.output_dir is None:
@@ -418,8 +548,12 @@ if __name__ == '__main__':
 
     scale_mult_xy = (args.scale_mult_x, args.scale_mult_y)
 
+    train_tar_urls = None
+    val_tar_urls = None
+    train_count = None
+
     if args.split in ['training', 'both']:
-        process_ho3d_split(
+        train_npz, train_tar_urls = process_ho3d_split(
             args.base_dir,
             'train',
             args.output_dir,
@@ -427,9 +561,12 @@ if __name__ == '__main__':
             bbox_source=args.bbox_source,
             body_detector=args.body_detector,
             detector_rescale_factor=args.detector_rescale_factor,
+            output_format=args.output_format,
+            tar_shard_size=args.tar_shard_size,
         )
+        train_count = len(train_npz['imgname'])
     if args.split in ['evaluation', 'both']:
-        process_ho3d_split(
+        _, val_tar_urls = process_ho3d_split(
             args.base_dir,
             'evaluation',
             args.output_dir,
@@ -437,4 +574,13 @@ if __name__ == '__main__':
             bbox_source=args.bbox_source,
             body_detector=args.body_detector,
             detector_rescale_factor=args.detector_rescale_factor,
+            output_format=args.output_format,
+            tar_shard_size=args.tar_shard_size,
+        )
+    if args.output_format in ('webdataset', 'both'):
+        write_webdataset_dataset_config(
+            output_dir=args.output_dir,
+            train_urls=train_tar_urls,
+            val_urls=val_tar_urls,
+            train_epoch_size=train_count,
         )

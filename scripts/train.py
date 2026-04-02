@@ -1,3 +1,26 @@
+"""
+Original HaMeR training entrypoint.
+
+Typical usage for HO3D-v3 webdataset finetuning:
+
+conda run -n STMF python scripts/train.py \
+  experiment=hamer_vit_transformer \
+  data=ho3d_only \
+  dataset_config_name=datasets_tar_ho3d_v3.yaml \
+  checkpoint=/path/to/hamer.ckpt \
+  LOSS_WEIGHTS.ADVERSARIAL=0 \
+  trainer.devices='[0,1]'
+
+Notes:
+- This script still uses the original HaMeR WebDataset tar pipeline.
+- `dataset_config_name` selects which tar metadata yaml under `hamer/configs/` to read.
+- `checkpoint` loads base model weights for finetuning.
+- When `LOSS_WEIGHTS.ADVERSARIAL=0`, mocap is no longer required.
+- `data=ho3d_only` switches the training mix to a single HO3D dataset defined in
+  `hamer/configs_hydra/data/ho3d_only.yaml`.
+- Use `ckpt_path=/path/to/last.ckpt` only when resuming a previous Lightning run.
+"""
+
 from typing import Optional, Tuple
 import pyrootutils
 
@@ -13,6 +36,7 @@ from pathlib import Path
 
 import hydra
 import pytorch_lightning as pl
+import torch
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -46,7 +70,8 @@ def save_configs(model_cfg: CfgNode, dataset_cfg: CfgNode, rootdir: str):
 def train(cfg: DictConfig) -> Tuple[dict, dict]:
 
     # Load dataset config
-    dataset_cfg = dataset_config()
+    dataset_cfg_name = cfg.get('dataset_config_name', 'datasets_tar.yaml')
+    dataset_cfg = dataset_config(dataset_cfg_name)
 
     # Save configs
     save_configs(cfg, dataset_cfg, cfg.paths.output_dir)
@@ -56,6 +81,15 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
 
     # Setup model
     model = HAMER(cfg)
+    checkpoint = cfg.get('checkpoint', None)
+    if checkpoint:
+        log.info(f'Loading initialization checkpoint from {checkpoint}')
+        state_dict = torch.load(checkpoint, map_location='cpu')
+        if 'state_dict' in state_dict:
+            state_dict_to_load = state_dict['state_dict']
+        else:
+            state_dict_to_load = state_dict.get('model', state_dict)
+        model.load_state_dict(state_dict_to_load, strict=False)
 
     # Setup Tensorboard logger
     logger = TensorBoardLogger(os.path.join(cfg.paths.output_dir, 'tensorboard'), name='', version='', default_hp_metric=False)
@@ -99,7 +133,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
         log_hyperparameters(object_dict)
 
     # Train the model
-    trainer.fit(model, datamodule=datamodule, ckpt_path='last')
+    trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.get('ckpt_path', None))
     log.info("Fitting done")
 
 

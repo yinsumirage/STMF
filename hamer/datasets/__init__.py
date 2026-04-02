@@ -58,6 +58,18 @@ class HAMERDataModule(pl.LightningDataModule):
         self.test_dataset = None
         self.mocap_dataset = None
 
+    def _get_train_epoch_size(self) -> int:
+        if getattr(self.cfg.DATASETS, 'TRAIN_EPOCH_SIZE', None):
+            return int(self.cfg.DATASETS.TRAIN_EPOCH_SIZE)
+
+        epoch_size = 0
+        for dataset_name in self.cfg.DATASETS.TRAIN.keys():
+            ds_cfg = self.dataset_cfg.get(dataset_name, None)
+            if ds_cfg is not None and 'epoch_size' in ds_cfg:
+                epoch_size += int(ds_cfg.epoch_size)
+
+        return epoch_size if epoch_size > 0 else 100_000
+
     def setup(self, stage: Optional[str] = None) -> None:
         """
         Load datasets necessary for training
@@ -65,17 +77,24 @@ class HAMERDataModule(pl.LightningDataModule):
             cfg (CfgNode): Config file as a yacs CfgNode containing necessary dataset info.
         """
         if self.train_dataset == None:
-            self.train_dataset = MixedWebDataset(self.cfg, self.dataset_cfg, train=True).with_epoch(100_000).shuffle(4000)
+            self.train_dataset = MixedWebDataset(self.cfg, self.dataset_cfg, train=True).with_epoch(self._get_train_epoch_size()).shuffle(4000)
             self.val_dataset = MixedWebDataset(self.cfg, self.dataset_cfg, train=False).shuffle(4000)
-            self.mocap_dataset = MoCapDataset(**to_lower(self.dataset_cfg[self.cfg.DATASETS.MOCAP]))
+            if self.cfg.LOSS_WEIGHTS.ADVERSARIAL > 0 and getattr(self.cfg.DATASETS, 'MOCAP', None):
+                self.mocap_dataset = MoCapDataset(**to_lower(self.dataset_cfg[self.cfg.DATASETS.MOCAP]))
+            else:
+                self.mocap_dataset = None
 
-    def train_dataloader(self) -> Dict:
+    def train_dataloader(self):
         """
         Setup training data loader.
         Returns:
-            Dict: Dictionary containing image and mocap data dataloaders
+            Either the original image+mocap dict, or a plain image dataloader when
+            adversarial/mocap training is disabled.
         """
         train_dataloader = torch.utils.data.DataLoader(self.train_dataset, self.cfg.TRAIN.BATCH_SIZE, drop_last=True, num_workers=self.cfg.GENERAL.NUM_WORKERS, prefetch_factor=self.cfg.GENERAL.PREFETCH_FACTOR)
+        if self.mocap_dataset is None:
+            return train_dataloader
+
         mocap_dataloader = torch.utils.data.DataLoader(self.mocap_dataset, self.cfg.TRAIN.NUM_TRAIN_SAMPLES * self.cfg.TRAIN.BATCH_SIZE, shuffle=True, drop_last=True, num_workers=1)
         return {'img': train_dataloader, 'mocap': mocap_dataloader}
 

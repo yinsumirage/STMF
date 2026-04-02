@@ -1,0 +1,10 @@
+# @package _global_
+
+DATASETS:
+  TRAIN:
+    HO3D-TRAIN:
+      WEIGHT: 1.0
+
+  VAL:
+    HO3D-VAL:
+      WEIGHT: 1.0
