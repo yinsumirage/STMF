@@ -84,6 +84,9 @@
     - ViTPose
     - 从右手关键点生成 hand bbox
   - `vitpose` 检测失败时会自动回退到 GT bbox，避免样本数下降
+  - HO3D 的 `hand_keypoints_2d / hand_keypoints_3d` 现在会在导出时从官方 MANO 顺序转换到 HaMeR/OpenPose 顺序
+    - 这是训练监督必须做的
+    - `pose_utils.py` 里的 HO3D reorder 只发生在评测导出，不会自动修正训练数据
 
 ### 3. 目前已经确认的结论
 
@@ -120,6 +123,25 @@
 - 不要混入和 HaMeR 无关的新 detector 作为主协议
 - 先优先尝试 HaMeR 自己 demo 所用的 `detector + ViTPose` 流程
 
+#### 3.4 HO3D 训练监督里还有一个很关键的顺序问题
+
+除了 bbox 之外，HO3D 训练数据还有一个容易反复踩坑的点：
+
+- HO3D 原始关节顺序和 HaMeR / `render_openpose()` 假设的顺序不是同一套
+- 如果直接把 HO3D 官方顺序写进训练 NPZ / webdataset tar
+  - TensorBoard 里的 GT skeleton 会连线混乱
+  - 更重要的是，训练 loss 也会拿错位的 joints 做监督
+
+当前处理方式：
+
+- 在 `tools/data_prep/ho3d_process.py` 导出时，先把 HO3D 官方顺序转换到模型内部顺序
+- 评测时仍由 `hamer/utils/pose_utils.py` 在导出预测结果前转回 HO3D 官方顺序
+
+这两个方向不能混淆：
+
+- 训练监督：必须转成模型顺序
+- 评测导出：必须转回官方顺序
+
 ### 4. 当前推荐使用方式
 
 #### 4.1 导出 HO3D NPZ
@@ -142,6 +164,24 @@ conda run -n STMF python tools/data_prep/ho3d_process.py \
   --bbox_source vitpose \
   --body_detector regnety
 ```
+
+导出后建议先检查 GT 是否正常：
+
+```bash
+conda run -n STMF python tools/data_prep/inspect_packed_gt.py \
+  --dataset_file /home/mirage/STMF/_DATA/HO-3D_v3/ho3d_train.npz \
+  --img_dir /home/mirage/STMF/_DATA/HO-3D_v3 \
+  --out_dir /home/mirage/STMF/_DATA/HO-3D_v3/inspect_train \
+  --dataset_type ho3d \
+  --packed_order openpose \
+  --order both \
+  --num_samples 12
+```
+
+检查时要这样理解：
+
+- `openpose/model order` 那一列才是拿来判断训练监督是否正常的主视图
+- `official MANO order` 那一列现在只画点和索引编号，用来对照原始官方索引，不用于判断骨架连线是否“像手”
 
 #### 4.2 评测原始 HaMeR baseline
 
@@ -185,6 +225,7 @@ conda run -n STMF python scripts/eval_stmf.py \
 - 本地评分脚本和官方评分链路是否完全一致，还需要继续确认
 - STMF 在 HO3D-v3 上的实际增益还不稳定
 - 还没有形成一份统一的“数据导出 -> 训练 -> 评测”完整 README
+- HO3D plain HaMeR finetune 仍在继续排查，当前已确认“全量微调容易把 base 训坏”，保守 head-only / pose-only 方案还在验证
 
 ### 6. 下一步最推荐做什么
 

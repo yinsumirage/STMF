@@ -6,6 +6,13 @@ from .discriminator import Discriminator
 from ..utils.download import cache_url
 from ..configs import CACHE_DIR_HAMER
 
+import torch
+from yacs.config import CfgNode
+from omegaconf import DictConfig, ListConfig
+
+if hasattr(torch.serialization, 'add_safe_globals'):
+    torch.serialization.add_safe_globals([CfgNode, DictConfig, ListConfig])
+
 
 def download_models(folder=CACHE_DIR_HAMER):
     """Download checkpoints and files for running inference.
@@ -30,11 +37,27 @@ def download_models(folder=CACHE_DIR_HAMER):
                 os.system("tar -xvf " + output_path)
 
 DEFAULT_CHECKPOINT=f'{CACHE_DIR_HAMER}/hamer_ckpts/checkpoints/hamer.ckpt'
+def _load_checkpoint_state(checkpoint_path):
+    checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+    if isinstance(checkpoint, dict):
+        if 'state_dict' in checkpoint:
+            return checkpoint['state_dict']
+        if 'model' in checkpoint:
+            return checkpoint['model']
+    return checkpoint
+
 def load_hamer(checkpoint_path=DEFAULT_CHECKPOINT):
     from pathlib import Path
     from ..configs import get_config
-    model_cfg = str(Path(checkpoint_path).parent.parent / 'model_config.yaml')
-    model_cfg = get_config(model_cfg, update_cachedir=True)
+    import yaml
+
+    model_cfg_path = str(Path(checkpoint_path).parent.parent / 'model_config.yaml')
+    with open(model_cfg_path, 'r') as f:
+        pre_cfg = yaml.safe_load(f)
+    mano_mean = pre_cfg.get('MANO', {}).get('MEAN_PARAMS', '')
+    should_update = not ('_DATA' in str(mano_mean))
+
+    model_cfg = get_config(model_cfg_path, update_cachedir=should_update)
 
     # Override some config values, to crop bbox correctly
     if (model_cfg.MODEL.BACKBONE.TYPE == 'vit') and ('BBOX_SHAPE' not in model_cfg.MODEL):
@@ -49,7 +72,9 @@ def load_hamer(checkpoint_path=DEFAULT_CHECKPOINT):
         model_cfg.MODEL.BACKBONE.pop('PRETRAINED_WEIGHTS')
         model_cfg.freeze()
 
-    model = HAMER.load_from_checkpoint(checkpoint_path, strict=False, cfg=model_cfg)
+    model = HAMER(model_cfg)
+    state_dict = _load_checkpoint_state(checkpoint_path)
+    model.load_state_dict(state_dict, strict=False)
     return model, model_cfg
 
 def load_stmf(checkpoint_path):
@@ -82,5 +107,7 @@ def load_stmf(checkpoint_path):
         model_cfg.freeze()
 
     # Load STMF model specifically
-    model = STMF_HAMER.load_from_checkpoint(checkpoint_path, strict=False, cfg=model_cfg)
+    model = STMF_HAMER(model_cfg, init_renderer=False)
+    state_dict = _load_checkpoint_state(checkpoint_path)
+    model.load_state_dict(state_dict, strict=False)
     return model, model_cfg

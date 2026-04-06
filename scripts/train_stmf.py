@@ -61,8 +61,7 @@ log = get_pylogger(__name__)
 @pl.utilities.rank_zero.rank_zero_only
 def save_configs(model_cfg: CfgNode, dataset_cfg: CfgNode, rootdir: str):
     Path(rootdir).mkdir(parents=True, exist_ok=True)
-    with open(os.path.join(rootdir, 'model_config.yaml'), 'w') as f:
-        f.write(model_cfg.dump())
+    OmegaConf.save(config=OmegaConf.create(model_cfg.dump()), f=os.path.join(rootdir, 'model_config.yaml'), resolve=True)
     with open(os.path.join(rootdir, 'dataset_config.yaml'), 'w') as f:
         f.write(dataset_cfg.dump())
 

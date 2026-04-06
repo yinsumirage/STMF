@@ -146,7 +146,60 @@ class ImageDataset(Dataset):
             hand_keypoints_3d = np.zeros((len(self.center), 21, 4), dtype=np.float32)
 
         self.keypoints_3d = hand_keypoints_3d
+        self._apply_ho3d_official_subset_filter(dataset_file)
         self._filter_missing_images()
+
+    def _apply_ho3d_official_subset_filter(self, dataset_file: str) -> None:
+        """
+        For HO3D evaluation-style NPZ files, keep only frames listed in the official
+        evaluation.txt whitelist so the prediction count matches the public scorer.
+        """
+        if self.train:
+            return
+
+        dataset_file_l = str(dataset_file).lower()
+        img_dir_l = str(self.img_dir).lower()
+        if 'ho3d' not in dataset_file_l and 'ho-3d' not in dataset_file_l and 'ho3d' not in img_dir_l and 'ho-3d' not in img_dir_l:
+            return
+
+        candidate_subset_files = [
+            os.path.join(self.img_dir, 'evaluation.txt'),
+            os.path.join(os.path.dirname(self.img_dir), 'evaluation.txt'),
+        ]
+        subset_file = next((p for p in candidate_subset_files if os.path.exists(p)), None)
+        if subset_file is None:
+            return
+
+        with open(subset_file, 'r') as f:
+            whitelist = {line.strip() for line in f.readlines() if line.strip()}
+        if not whitelist:
+            return
+
+        keep_mask = np.ones(len(self.imgname), dtype=np.bool_)
+        matched = 0
+        for idx, raw_name in enumerate(self.imgname):
+            name = raw_name.decode('utf-8') if isinstance(raw_name, bytes) else str(raw_name)
+            norm_name = name.replace('\\', '/')
+            stem = os.path.splitext(norm_name)[0]
+            parts = stem.split('/')
+
+            short_name = None
+            # examples:
+            # evaluation/SM1/rgb/0000.jpg -> SM1/0000
+            # SM1/rgb/0000.png            -> SM1/0000
+            if len(parts) >= 3 and parts[-2] == 'rgb':
+                short_name = f"{parts[-3]}/{parts[-1]}"
+
+            if short_name is None or short_name not in whitelist:
+                keep_mask[idx] = False
+            else:
+                matched += 1
+
+        if matched == len(self.imgname):
+            return
+
+        print(f"Applying HO3D official whitelist from {subset_file}: keeping {matched}/{len(self.imgname)}")
+        self._apply_sample_mask(keep_mask)
 
     def _filter_missing_images(self) -> None:
         if not self.skip_missing_images:

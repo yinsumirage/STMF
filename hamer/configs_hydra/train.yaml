@@ -4,7 +4,7 @@
 # order of defaults determines the order in which configs override each other
 defaults:
   - _self_
-  #- data: mix_all.yaml
+  - data: mix_all.yaml
   #- trainer: ddp.yaml
   - paths: default.yaml
   - extras: default.yaml
@@ -44,17 +44,28 @@ seed: null
 
 # Training Parameters
 epochs: 20
-batch_size: 64
-num_workers: 4
+max_steps: null
+batch_size: null  # 64
+num_workers: null # 4
+prefetch_factor: null
+lr: null
+weight_decay: null
+log_steps: null
 precision: 32
 limit_train_batches: 1.0
 limit_val_batches: 0
 limit_test_batches: 1.0
-log_every_n_steps: 10
+log_every_n_steps: 1
 checkpoint: null
+dataset_config_name: datasets_tar.yaml
 run_validation: False
 num_sanity_val_steps: 0
 log_lr: False
+freeze_backbone: False
+freeze_mano_head: False
+freeze_mano_transformer: False
+freeze_camera_head: False
+freeze_shape_head: False
 
 # GPU and Strategy
 devices: [0, 1]
@@ -66,6 +77,7 @@ strategy: ddp_find_unused_parameters_true
 # Checkpoint Frequencies
 checkpoint_step_frequency: 1000
 checkpoint_epoch_frequency: null
+checkpoint_save_top_k: -1
 
 # Test after training
 test: False

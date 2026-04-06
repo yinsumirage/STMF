@@ -64,6 +64,22 @@ class HAMER(pl.LightningModule):
         # Disable automatic optimization since we use adversarial training
         self.automatic_optimization = False
 
+    def _keep_frozen_modules_in_eval(self) -> None:
+        """Frozen modules should stay in eval mode during finetuning."""
+        if self.cfg.get('freeze_backbone', False):
+            self.backbone.eval()
+        if self.cfg.get('freeze_mano_transformer', False):
+            self.mano_head.transformer.eval()
+
+    def on_train_start(self) -> None:
+        self._keep_frozen_modules_in_eval()
+
+    def on_train_epoch_start(self) -> None:
+        self._keep_frozen_modules_in_eval()
+
+    def on_validation_start(self) -> None:
+        self._keep_frozen_modules_in_eval()
+
     def get_parameters(self):
         all_params = list(self.mano_head.parameters())
         all_params += list(self.backbone.parameters())
@@ -341,7 +357,11 @@ class HAMER(pl.LightningModule):
         if self.global_step > 0 and self.global_step % self.cfg.GENERAL.LOG_STEPS == 0:
             self.tensorboard_logging(batch, output, self.global_step, train=True)
 
-        self.log('train/loss', output['losses']['loss'], on_step=True, on_epoch=True, prog_bar=True, logger=False)
+        self.log('train/loss', output['losses']['loss'], on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        for loss_name, loss_value in output['losses'].items():
+            if loss_name == 'loss':
+                continue
+            self.log(f'train/{loss_name}', loss_value, on_step=True, on_epoch=False, prog_bar=False, logger=True, batch_size=batch_size)
 
         return output
 
@@ -354,10 +374,15 @@ class HAMER(pl.LightningModule):
         Returns:
             Dict: Dictionary containing regression output.
         """
-        # batch_size = batch['img'].shape[0]
+        batch_size = batch['img'].shape[0]
         output = self.forward_step(batch, train=False)
         loss = self.compute_loss(batch, output, train=False)
         output['loss'] = loss
         self.tensorboard_logging(batch, output, self.global_step, train=False)
+        self.log('val/loss', output['losses']['loss'], on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=batch_size)
+        for loss_name, loss_value in output['losses'].items():
+            if loss_name == 'loss':
+                continue
+            self.log(f'val/{loss_name}', loss_value, on_step=False, on_epoch=True, prog_bar=False, logger=True, batch_size=batch_size)
 
         return output

@@ -65,6 +65,15 @@ sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.dirname(__file__))
 from mano_processor.core import MANOHandProcessor
 
+# HaMeR/MANO prediction side uses an OpenPose-style hand joint order internally.
+# HO3D annotations are stored in the official MANO finger-grouped order.
+# We export training targets in the model-native order so both training loss and
+# TensorBoard skeleton rendering stay consistent with the model outputs.
+HO3D_OFFICIAL_TO_OPENPOSE = np.array(
+    [0, 13, 14, 15, 16, 1, 2, 3, 17, 4, 5, 6, 18, 10, 11, 12, 19, 7, 8, 9, 20],
+    dtype=np.int64,
+)
+
 
 def project_3D_points(cam_mat, pts3D, is_OpenGL_coords=True):
     assert pts3D.shape[-1] == 3
@@ -77,6 +86,11 @@ def project_3D_points(cam_mat, pts3D, is_OpenGL_coords=True):
     proj_pts = pts3D.dot(cam_mat.T)
     proj_pts = np.stack([proj_pts[:, 0] / proj_pts[:, 2], proj_pts[:, 1] / proj_pts[:, 2]], axis=1)
     return proj_pts
+
+
+def reorder_ho3d_keypoints_to_model_order(kps_2d, kps_3d):
+    """Convert HO3D official MANO order to HaMeR/OpenPose order."""
+    return kps_2d[HO3D_OFFICIAL_TO_OPENPOSE], kps_3d[HO3D_OFFICIAL_TO_OPENPOSE]
 
 
 def compute_bbox(keypoints_2d, padding=0.25, scale_mult_xy=(1.0, 1.0)):
@@ -283,6 +297,7 @@ def process_ho3d_split(
                     pts_2d = project_3D_points(cam_mat, joints_3d, is_OpenGL_coords=True)
                     kps_2d = np.concatenate([pts_2d, np.ones((21, 1))], axis=1)
                     kps_3d = np.concatenate([joints_3d, np.ones((21, 1))], axis=1)
+                    kps_2d, kps_3d = reorder_ho3d_keypoints_to_model_order(kps_2d, kps_3d)
                 else:
                     pts_2d = None
                     kps_2d = np.zeros((21, 3), dtype=np.float32)
@@ -364,6 +379,7 @@ def process_ho3d_split(
 
                 kps_2d = np.concatenate([pts_2d, np.ones((21, 1))], axis=1)
                 kps_3d = np.concatenate([joints_3d, np.ones((21, 1))], axis=1)
+                kps_2d, kps_3d = reorder_ho3d_keypoints_to_model_order(kps_2d, kps_3d)
 
                 has_pose = 1.0 if 'handPose' in anno and anno['handPose'] is not None else 0.0
                 has_betas = 1.0 if 'handBeta' in anno and anno['handBeta'] is not None else 0.0
@@ -479,7 +495,7 @@ def write_webdataset_split(base_dir, split_name, output_dir, final_npz, shard_si
                 },
             }
 
-            key = rel_path.replace('/', '__')
+            key = str(Path(rel_path).with_suffix('')).replace('/', '__')
             sink.write({
                 '__key__': key,
                 ext: image_bytes,

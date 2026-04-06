@@ -10,6 +10,12 @@ HO3D-VAL:
     IMG_DIR: /data/hand_data/HO-3D_v3/evaluation
     KEYPOINT_LIST: [0] # Dummy
 
+HO3D-VAL-SELF:
+    TYPE: ImageDataset
+    DATASET_FILE: /data/hand_data/HO-3D_v3/ho3d_evaluation.npz
+    IMG_DIR: /data/hand_data/HO-3D_v3
+    KEYPOINT_LIST: [0] # Dummy
+
 EGO4D-TEST-ALL:
     TYPE: ImageDataset
     DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/TEST_ego4d_img_all.npz

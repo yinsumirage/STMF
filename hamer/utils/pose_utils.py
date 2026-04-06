@@ -236,7 +236,7 @@ class Evaluator:
         if hasattr(self, 'vertices'):
             self.vertices[self.counter:self.counter+batch_size] = pred_vertices.cpu().numpy()
         if hasattr(self, 'keypoints_3d'):
-            if self.dataset == 'HO3D-VAL':
+            if str(self.dataset).startswith('HO3D-VAL'):
                 pred_keypoints_3d = pred_keypoints_3d[:,:,[0,5,6,7,9,10,11,17,18,19,13,14,15,1,2,3,4,8,12,16,20]]
             self.keypoints_3d[self.counter:self.counter+batch_size] = pred_keypoints_3d.squeeze().cpu().numpy()
 

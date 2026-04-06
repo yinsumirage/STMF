@@ -1,3 +1,34 @@
+"""
+HaMeR evaluation entrypoint.
+
+Typical usage:
+
+1. Evaluate with the default packaged HO3D metadata:
+conda run -n STMF python scripts/eval.py \
+  --checkpoint /path/to/hamer_or_finetuned.ckpt \
+  --dataset HO3D-VAL \
+  --results_folder results_hamer
+
+2. Evaluate with your own packed HO3D-v3 metadata from yaml:
+conda run -n STMF python scripts/eval.py \
+  --checkpoint /path/to/hamer_or_finetuned.ckpt \
+  --dataset HO3D-VAL-SELF \
+  --results_folder results_hamer_v3
+
+3. Evaluate with a custom HO3D-v3 NPZ you packed yourself:
+conda run -n STMF python scripts/eval.py \
+  --checkpoint /path/to/hamer_or_finetuned.ckpt \
+  --dataset HO3D-VAL \
+  --dataset_file /data/hand_data/HO-3D_v3/ho3d_evaluation.npz \
+  --img_dir /data/hand_data/HO-3D_v3 \
+  --results_folder results_hamer_v3
+
+Notes:
+- By default, `HO3D-VAL` comes from `hamer/configs/datasets_eval.yaml`.
+- `--dataset_file` and `--img_dir` let you temporarily override that path without
+  editing yaml files.
+"""
+
 import argparse
 import os
 import json
@@ -8,7 +39,7 @@ from typing import List, Optional
 import pandas as pd
 import torch
 from filelock import FileLock
-from hamer.configs import dataset_eval_config
+from hamer.configs import dataset_config, dataset_eval_config
 from hamer.datasets import create_dataset
 from hamer.utils import Evaluator, recursive_to
 from tqdm import tqdm
@@ -21,6 +52,9 @@ def main():
     parser.add_argument('--checkpoint', type=str, default=DEFAULT_CHECKPOINT, help='Path to pretrained model checkpoint')
     parser.add_argument('--results_folder', type=str, default='results', help='Path to results folder.')
     parser.add_argument('--dataset', type=str, default='FREIHAND-VAL,HO3D-VAL,NEWDAYS-TEST-ALL,NEWDAYS-TEST-VIS,NEWDAYS-TEST-OCC,EPICK-TEST-ALL,EPICK-TEST-VIS,EPICK-TEST-OCC,EGO4D-TEST-ALL,EGO4D-TEST-VIS,EGO4D-TEST-OCC', help='Dataset to evaluate')
+    parser.add_argument('--dataset_config_name', type=str, default='datasets_eval.yaml', help='Dataset config yaml under hamer/configs/')
+    parser.add_argument('--dataset_file', type=str, default=None, help='Optional override for the selected dataset NPZ file')
+    parser.add_argument('--img_dir', type=str, default=None, help='Optional override for the selected dataset image root')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size for inference')
     parser.add_argument('--num_samples', type=int, default=1, help='Number of test samples to draw')
     parser.add_argument('--num_workers', type=int, default=8, help='Number of workers used for data loading')
@@ -41,15 +75,24 @@ def main():
 
     # Load config and run eval, one dataset at a time
     print('Evaluating on datasets: {}'.format(args.dataset), flush=True)
+    cfg_loader = dataset_eval_config if args.dataset_config_name == 'datasets_eval.yaml' else (lambda: dataset_config(args.dataset_config_name))
     for dataset in args.dataset.split(','):
-        dataset_cfg = dataset_eval_config()[dataset]
+        dataset_cfg = cfg_loader()[dataset].clone()
+        if args.dataset_file is not None:
+            dataset_cfg.defrost()
+            dataset_cfg.DATASET_FILE = args.dataset_file
+            dataset_cfg.freeze()
+        if args.img_dir is not None:
+            dataset_cfg.defrost()
+            dataset_cfg.IMG_DIR = args.img_dir
+            dataset_cfg.freeze()
         args.dataset = dataset
         run_eval(model, model_cfg, dataset_cfg, device, args)
 
 def run_eval(model, model_cfg, dataset_cfg, device, args):
 
     # List of metrics to log
-    if args.dataset in ['FREIHAND-VAL', 'HO3D-VAL']:
+    if args.dataset in ['FREIHAND-VAL', 'HO3D-VAL', 'HO3D-VAL-SELF']:
         metrics = None
         preds = ['vertices', 'keypoints_3d']
         pck_thresholds = None

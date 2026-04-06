@@ -224,6 +224,17 @@
 - `gt`
 - `vitpose`
 
+另外，这个文件现在还负责一个很重要的训练监督修复：
+
+- 把 HO3D 官方 MANO 顺序的 `hand_keypoints_2d / hand_keypoints_3d`
+- 转成 HaMeR / OpenPose 风格的模型内部顺序
+
+原因：
+
+- `hamer/utils/pose_utils.py` 里的 HO3D reorder 只在评测导出时生效
+- 训练 dataloader 不会自动帮你修 joints 顺序
+- 如果导出时不转换，训练 loss 会直接用错位的关节监督模型
+
 当前的 `vitpose` 模式复用了 `scripts/demo.py` 的流程：
 
 - body detector
@@ -235,10 +246,34 @@
 - bbox protocol
 - 是否使用 detector
 - detector 成功/失败回退逻辑
+- HO3D joints 顺序导出逻辑
 
 就进这个文件。
 
-### 6.2 FreiHAND 导出脚本
+### 6.2 打包结果检查工具
+
+文件：
+
+- `tools/data_prep/inspect_packed_gt.py`
+
+作用：
+
+- 读取已经打包好的 NPZ
+- 把原图、bbox、GT keypoints 渲染出来
+- 用来快速检查：
+  - bbox 是否合理
+  - 关节顺序是否已经转换到模型顺序
+
+注意：
+
+- `openpose/model order` 视图：
+  - 用 OpenPose 风格连线
+  - 这是判断训练监督是否正常的主视图
+- `official MANO order` 视图：
+  - 只画点和索引编号
+  - 不能拿它判断 OpenPose 风格骨架是否“像手”
+
+### 6.3 FreiHAND 导出脚本
 
 文件：
 

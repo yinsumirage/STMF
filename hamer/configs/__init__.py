@@ -101,9 +101,32 @@ def get_config(config_file: str, merge: bool = True, update_cachedir: bool = Fal
       cfg = CN(new_allowed=True)
     cfg.merge_from_file(config_file)
 
+    def resolve_mano_ref(path: str) -> str:
+      if not isinstance(path, str):
+        return path
+      if '${MANO.DATA_DIR}' in path:
+        path = path.replace('${MANO.DATA_DIR}', str(cfg.MANO.DATA_DIR))
+      if '${CACHE_DIR_HAMER}' in path:
+        path = path.replace('${CACHE_DIR_HAMER}', CACHE_DIR_HAMER)
+      return path
+
+    if 'MANO' in cfg:
+      if 'MODEL_PATH' in cfg.MANO:
+        cfg.MANO.MODEL_PATH = resolve_mano_ref(cfg.MANO.MODEL_PATH)
+      if 'MEAN_PARAMS' in cfg.MANO:
+        cfg.MANO.MEAN_PARAMS = resolve_mano_ref(cfg.MANO.MEAN_PARAMS)
+
     if update_cachedir:
+      def normalize_rel(path: str) -> str:
+        return path.replace('\\', '/').lstrip('./')
+
       def update_path(path: str) -> str:
+        path = resolve_mano_ref(path)
         if os.path.isabs(path):
+          return path
+        norm = normalize_rel(path)
+        cache_norm = normalize_rel(CACHE_DIR_HAMER).rstrip('/')
+        if norm == cache_norm or norm.startswith(f'{cache_norm}/'):
           return path
         return os.path.join(CACHE_DIR_HAMER, path)
 

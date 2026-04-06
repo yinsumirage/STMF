@@ -1,0 +1,31 @@
+# @package _global_
+
+defaults:
+  - hamer_vit_transformer.yaml
+
+# Conservative HO3D-v3 finetuning recipe:
+# - keep the original HaMeR architecture
+# - freeze the ViT backbone by default
+# - adapt only the MANO head first
+# - save checkpoints frequently so early drift is easy to catch
+
+TRAIN:
+  LR: 1e-5
+  WEIGHT_DECAY: 1e-4
+  BATCH_SIZE: 64
+
+GENERAL:
+  LOG_STEPS: 500
+  CHECKPOINT_STEPS: 500
+  CHECKPOINT_SAVE_TOP_K: -1
+
+LOSS_WEIGHTS:
+  ADVERSARIAL: 0.0
+
+epochs: 10
+log_every_n_steps: 19
+freeze_backbone: True
+freeze_mano_head: False
+run_validation: False
+num_sanity_val_steps: 0
+log_lr: False
