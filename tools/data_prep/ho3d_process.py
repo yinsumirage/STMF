@@ -45,6 +45,9 @@ python tools/data_prep/ho3d_process.py \
       复用 HaMeR demo 的流程，先做人检测，再跑 ViTPose，再从右手关键点生成 hand bbox。
     - `--body_detector`:
       仅在 `bbox_source=vitpose` 时生效，可选 `regnety` 或 `vitdet`。
+    - `--reorder_eval_to_model_order`:
+      默认关闭。训练 split 会自动转成 HaMeR/OpenPose 顺序；
+      evaluation split 默认保留 HO3D 官方顺序，避免和 benchmark 评测语义混淆。
 """
 import os
 import glob
@@ -219,6 +222,7 @@ def process_ho3d_split(
     detector_rescale_factor=2.0,
     output_format='npz',
     tar_shard_size=1000,
+    reorder_eval_to_model_order=False,
 ):
     print(f"Processing HO-3D {split_name} split...")
     split_dir = os.path.join(base_dir, split_name)
@@ -297,7 +301,8 @@ def process_ho3d_split(
                     pts_2d = project_3D_points(cam_mat, joints_3d, is_OpenGL_coords=True)
                     kps_2d = np.concatenate([pts_2d, np.ones((21, 1))], axis=1)
                     kps_3d = np.concatenate([joints_3d, np.ones((21, 1))], axis=1)
-                    kps_2d, kps_3d = reorder_ho3d_keypoints_to_model_order(kps_2d, kps_3d)
+                    if reorder_eval_to_model_order:
+                        kps_2d, kps_3d = reorder_ho3d_keypoints_to_model_order(kps_2d, kps_3d)
                 else:
                     pts_2d = None
                     kps_2d = np.zeros((21, 3), dtype=np.float32)
@@ -556,7 +561,8 @@ if __name__ == '__main__':
     parser.add_argument('--scale_mult_x', type=float, default=1.57, help='Extra width multiplier to align HO3D crops with HaMeR bbox convention')
     parser.add_argument('--scale_mult_y', type=float, default=1.55, help='Extra height multiplier to align HO3D crops with HaMeR bbox convention')
     parser.add_argument('--output_format', type=str, choices=['npz', 'webdataset', 'both'], default='npz')
-    parser.add_argument('--tar_shard_size', type=int, default=1000, help='Max samples per exported webdataset tar shard')
+    parser.add_argument('--tar_shard_size', type=int, default=100000, help='Max samples per exported webdataset tar shard')
+    parser.add_argument('--reorder_eval_to_model_order', action='store_true', help='Also reorder evaluation split GT keypoints into model/OpenPose order')
     args = parser.parse_args()
 
     if args.output_dir is None:
@@ -579,6 +585,7 @@ if __name__ == '__main__':
             detector_rescale_factor=args.detector_rescale_factor,
             output_format=args.output_format,
             tar_shard_size=args.tar_shard_size,
+            reorder_eval_to_model_order=False,
         )
         train_count = len(train_npz['imgname'])
     if args.split in ['evaluation', 'both']:
@@ -592,6 +599,7 @@ if __name__ == '__main__':
             detector_rescale_factor=args.detector_rescale_factor,
             output_format=args.output_format,
             tar_shard_size=args.tar_shard_size,
+            reorder_eval_to_model_order=args.reorder_eval_to_model_order,
         )
     if args.output_format in ('webdataset', 'both'):
         write_webdataset_dataset_config(

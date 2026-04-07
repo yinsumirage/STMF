@@ -84,8 +84,12 @@
     - ViTPose
     - 从右手关键点生成 hand bbox
   - `vitpose` 检测失败时会自动回退到 GT bbox，避免样本数下降
-  - HO3D 的 `hand_keypoints_2d / hand_keypoints_3d` 现在会在导出时从官方 MANO 顺序转换到 HaMeR/OpenPose 顺序
-    - 这是训练监督必须做的
+  - HO3D 的 `hand_keypoints_2d / hand_keypoints_3d` 现在按 split 区分处理：
+    - `train`: 导出时从官方 MANO 顺序转换到 HaMeR/OpenPose 顺序
+    - `evaluation`: 默认保留 HO3D 官方顺序
+  - 原因：
+    - 训练监督必须和模型输出顺序一致
+    - benchmark 评测文件最好保持官方语义，避免混淆
     - `pose_utils.py` 里的 HO3D reorder 只发生在评测导出，不会自动修正训练数据
 
 ### 3. 目前已经确认的结论
@@ -134,8 +138,11 @@
 
 当前处理方式：
 
-- 在 `tools/data_prep/ho3d_process.py` 导出时，先把 HO3D 官方顺序转换到模型内部顺序
-- 评测时仍由 `hamer/utils/pose_utils.py` 在导出预测结果前转回 HO3D 官方顺序
+- `tools/data_prep/ho3d_process.py`
+  - `train` split: 先把 HO3D 官方顺序转换到模型内部顺序
+  - `evaluation` split: 默认保持官方顺序
+- `hamer/utils/pose_utils.py`
+  - 评测导出预测结果前，把模型内部顺序转回 HO3D 官方顺序
 
 这两个方向不能混淆：
 
@@ -182,6 +189,8 @@ conda run -n STMF python tools/data_prep/inspect_packed_gt.py \
 
 - `openpose/model order` 那一列才是拿来判断训练监督是否正常的主视图
 - `official MANO order` 那一列现在只画点和索引编号，用来对照原始官方索引，不用于判断骨架连线是否“像手”
+- 如果检查旧版未修复的 HO3D NPZ，需要改成：
+  - `--packed_order official`
 
 #### 4.2 评测原始 HaMeR baseline
 

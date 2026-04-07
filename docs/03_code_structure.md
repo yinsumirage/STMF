@@ -229,11 +229,19 @@
 - 把 HO3D 官方 MANO 顺序的 `hand_keypoints_2d / hand_keypoints_3d`
 - 转成 HaMeR / OpenPose 风格的模型内部顺序
 
+但这里现在是按 split 区分的：
+
+- `train` split:
+  - 转成模型内部顺序
+- `evaluation` split:
+  - 默认保留官方顺序
+
 原因：
 
 - `hamer/utils/pose_utils.py` 里的 HO3D reorder 只在评测导出时生效
 - 训练 dataloader 不会自动帮你修 joints 顺序
 - 如果导出时不转换，训练 loss 会直接用错位的关节监督模型
+- 如果把 evaluation 也默默改成模型顺序，反而容易和 benchmark 评测语义混在一起
 
 当前的 `vitpose` 模式复用了 `scripts/demo.py` 的流程：
 
@@ -272,6 +280,9 @@
 - `official MANO order` 视图：
   - 只画点和索引编号
   - 不能拿它判断 OpenPose 风格骨架是否“像手”
+- `packed_order` 需要和当前 NPZ 实际保存的顺序一致：
+  - 旧 HO3D NPZ 通常是 `official`
+  - 修复后的 train NPZ 应该是 `openpose`
 
 ### 6.3 FreiHAND 导出脚本
 
