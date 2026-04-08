@@ -6,12 +6,9 @@ defaults:
   - override /hydra/hydra_logging: colorlog
   - override /hydra/job_logging: colorlog
 
-# exp_name: ovrd_${hydra:job.override_dirname}
-exp_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
-
 hydra:
   run:
-    dir: ${paths.log_dir}/${task_name}/runs/${exp_name}
+    dir: ${paths.log_dir}/${task_name}/${exp_name}/${now:%Y-%m-%d_%H-%M-%S}
   sweep:
     dir: ${paths.log_dir}/${task_name}/multiruns/${exp_name}
     subdir: ${hydra.job.num}

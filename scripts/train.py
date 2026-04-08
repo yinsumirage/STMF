@@ -27,7 +27,11 @@ Notes:
 - When `LOSS_WEIGHTS.ADVERSARIAL=0`, mocap is no longer required.
 - `data=ho3d_only` switches the training mix to a single HO3D dataset defined in
   `hamer/configs_hydra/data/ho3d_only.yaml`.
-- Use `ckpt_path=/path/to/last.ckpt` only when resuming a previous Lightning run.
+- Use `ckpt_path=/path/to/last.ckpt` when resuming a previous Lightning run.
+- By default, `ckpt_path` is treated as a safe weight-initialization fallback.
+- When either `checkpoint` or `ckpt_path` is provided, the standalone
+  `MODEL.BACKBONE.PRETRAINED_WEIGHTS` file is disabled before model construction,
+  because the checkpoint already contains backbone weights.
 - `log_lr=false` keeps TensorBoard clean by disabling the learning-rate curve.
 - `run_validation=false` / `limit_val_batches=0` matches the current STMF-style setup
   when you only want to watch training loss.
@@ -50,13 +54,20 @@ import hydra
 import pytorch_lightning as pl
 import torch
 torch.set_float32_matmul_precision('high')
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, ListConfig, OmegaConf
+from omegaconf.base import ContainerMetadata
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.plugins.environments import SLURMEnvironment
+from lightning_fabric.plugins.io.torch_io import TorchCheckpointIO
+from lightning_fabric.utilities.cloud_io import _load as pl_load
 #from pytorch_lightning.trainingtype import DDPPlugin
 
 from yacs.config import CfgNode
+
+if hasattr(torch.serialization, 'add_safe_globals'):
+    torch.serialization.add_safe_globals([CfgNode, DictConfig, ListConfig, ContainerMetadata])
+
 from hamer.configs import dataset_config
 from hamer.datasets import HAMERDataModule
 from hamer.models.hamer import HAMER
@@ -69,6 +80,19 @@ import signal
 signal.signal(signal.SIGUSR1, signal.SIG_DFL)
 
 log = get_pylogger(__name__)
+
+
+class UnsafeResumeCheckpointIO(TorchCheckpointIO):
+    """Checkpoint IO that disables weights_only for trusted local resume checkpoints.
+
+    PyTorch 2.6+ defaults torch.load(..., weights_only=True), which breaks exact
+    Lightning resume when checkpoints contain OmegaConf/YACS objects. For our
+    own locally-produced checkpoints we prefer exact state restoration here.
+    """
+
+    def load_checkpoint(self, path, map_location=None, weights_only: bool = False):
+        del weights_only
+        return pl_load(path, map_location=map_location, weights_only=False)
 
 
 @pl.utilities.rank_zero.rank_zero_only
@@ -139,6 +163,25 @@ def freeze_modules(model: HAMER, cfg: DictConfig) -> None:
     frozen = sum(p.numel() for p in model.parameters() if not p.requires_grad)
     log.info(f"Trainable params after freezing: {trainable:,}; frozen params: {frozen:,}")
 
+
+def resolve_output_dir(cfg: DictConfig) -> str:
+    """Choose a stable output dir, reusing the original run dir on exact resume."""
+    resume_ckpt = cfg.get('ckpt_path', None)
+    default_output_dir = str(cfg.paths.output_dir)
+
+    if resume_ckpt:
+        ckpt_path = Path(resume_ckpt)
+        if ckpt_path.name.endswith('.ckpt') and ckpt_path.parent.name == 'checkpoints':
+            resumed_output_dir = str(ckpt_path.parent.parent)
+            if resumed_output_dir != default_output_dir:
+                log.info(
+                    "Exact resume requested: reusing original run output_dir from checkpoint: "
+                    f"{resumed_output_dir}"
+                )
+            return resumed_output_dir
+
+    return default_output_dir
+
 @task_wrapper
 def train(cfg: DictConfig) -> Tuple[dict, dict]:
 
@@ -148,19 +191,31 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     dataset_cfg_name = cfg.get('dataset_config_name', 'datasets_tar.yaml')
     dataset_cfg = dataset_config(dataset_cfg_name)
 
-    # When finetuning from a full HaMeR checkpoint we already have the backbone
-    # weights inside the checkpoint, so we should not additionally require the
-    # original standalone ViTPose backbone file to exist locally.
+    # When initializing from a model checkpoint or resuming a Lightning run, the
+    # checkpoint already contains backbone weights. Disable the standalone
+    # PRETRAINED_WEIGHTS path before constructing HAMER so resume works even when
+    # vitpose_backbone.pth is not present locally.
     checkpoint = cfg.get('checkpoint', None)
-    if checkpoint and cfg.get('MODEL', None) and cfg.MODEL.get('BACKBONE', None):
+    resume_ckpt = cfg.get('ckpt_path', None)
+    init_source = checkpoint or resume_ckpt
+    if init_source and cfg.get('MODEL', None) and cfg.MODEL.get('BACKBONE', None):
         pretrained_path = cfg.MODEL.BACKBONE.get('PRETRAINED_WEIGHTS', None)
         if pretrained_path:
-            log.info(f"Disabling BACKBONE.PRETRAINED_WEIGHTS because checkpoint initialization is provided: {checkpoint}")
+            log.info(
+                "Disabling BACKBONE.PRETRAINED_WEIGHTS because checkpoint-based "
+                f"initialization is provided: {init_source}"
+            )
             OmegaConf.set_struct(cfg, False)
             cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS = None
+            OmegaConf.set_struct(cfg, True)
+
+    output_dir = resolve_output_dir(cfg)
+    OmegaConf.set_struct(cfg, False)
+    cfg.paths.output_dir = output_dir
+    OmegaConf.set_struct(cfg, True)
 
     # Save configs
-    save_configs(cfg, dataset_cfg, cfg.paths.output_dir)
+    save_configs(cfg, dataset_cfg, output_dir)
 
     # Setup training and validation datasets
     datamodule = HAMERDataModule(cfg, dataset_cfg)
@@ -169,7 +224,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     model = HAMER(cfg)
     if checkpoint:
         log.info(f'Loading initialization checkpoint from {checkpoint}')
-        state_dict = torch.load(checkpoint, map_location='cpu')
+        state_dict = torch.load(checkpoint, map_location='cpu', weights_only=False)
         if 'state_dict' in state_dict:
             state_dict_to_load = state_dict['state_dict']
         else:
@@ -180,7 +235,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
 
     # Setup Tensorboard logger
     logger = TensorBoardLogger(
-        os.path.join(cfg.paths.output_dir, 'tensorboard'),
+        os.path.join(output_dir, 'tensorboard'),
         name=cfg.get('exp_name', ''),
         version=cfg.get('run_version', None),
         default_hp_metric=False,
@@ -189,7 +244,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
 
     # Setup checkpoint saving
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath=os.path.join(cfg.paths.output_dir, 'checkpoints'), 
+        dirpath=os.path.join(output_dir, 'checkpoints'),
         every_n_train_steps=cfg.GENERAL.CHECKPOINT_STEPS,
         filename='step_{step}',
         save_last=True,
@@ -203,6 +258,13 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     run_validation = bool(cfg.get('run_validation', True))
     limit_val_batches = cfg.get('limit_val_batches', 1.0 if run_validation else 0.0)
     num_sanity_val_steps = cfg.get('num_sanity_val_steps', 2 if run_validation else 0)
+    plugins = []
+    if cfg.get('launcher', None) is not None:
+        plugins.append(SLURMEnvironment(requeue_signal=signal.SIGUSR2))
+    if resume_ckpt:
+        log.info("Enabling exact Lightning checkpoint resume with custom CheckpointIO (weights_only=False).")
+        plugins.append(UnsafeResumeCheckpointIO())
+
     trainer: Trainer = Trainer(
         accelerator=cfg.get('accelerator', 'gpu'),
         devices=cfg.get('devices', 1),
@@ -218,7 +280,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
         logger=loggers,
         precision=cfg.get('precision', 32),
         log_every_n_steps=cfg.get('log_every_n_steps', 1),
-        plugins=(SLURMEnvironment(requeue_signal=signal.SIGUSR2) if (cfg.get('launcher',None) is not None) else None),
+        plugins=plugins or None,
     )
 
     object_dict = {

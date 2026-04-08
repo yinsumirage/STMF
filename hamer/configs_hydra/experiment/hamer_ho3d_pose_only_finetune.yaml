@@ -3,6 +3,8 @@
 defaults:
   - hamer_vit_transformer.yaml
 
+exp_name: hamer_ho3d_pose_only_finetune
+
 # Even more conservative HO3D-v3 finetuning:
 # - keep the pretrained backbone fixed
 # - keep the shared MANO transformer fixed
@@ -10,20 +12,25 @@ defaults:
 # - only adapt the pose readout layer (decpose)
 
 TRAIN:
-  LR: 3e-6
+  LR: 1e-5
   WEIGHT_DECAY: 1e-4
   BATCH_SIZE: 64
 
 GENERAL:
-  LOG_STEPS: 200
-  CHECKPOINT_STEPS: 200
+  LOG_STEPS: 500
+  CHECKPOINT_STEPS: 1000
   CHECKPOINT_SAVE_TOP_K: -1
 
 LOSS_WEIGHTS:
+  # KEYPOINTS_3D: 0.06
+  # KEYPOINTS_2D: 0.005
+  # GLOBAL_ORIENT: 0.0001
+  # HAND_POSE: 0.005
+  # BETAS: 0.002
   ADVERSARIAL: 0.0
 
 epochs: 10
-log_every_n_steps: 5
+log_every_n_steps: 10
 freeze_backbone: True
 freeze_mano_head: False
 freeze_mano_transformer: True

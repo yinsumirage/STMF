@@ -3,6 +3,8 @@
 defaults:
   - default.yaml
 
+exp_name: hamer_vit_transformer
+
 GENERAL:
   TOTAL_STEPS: 1_000_000
   LOG_STEPS: 2000

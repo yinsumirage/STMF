@@ -138,9 +138,11 @@
 
 当前处理方式：
 
-- `tools/data_prep/ho3d_process.py`
+  - `tools/data_prep/ho3d_process.py`
   - `train` split: 先把 HO3D 官方顺序转换到模型内部顺序
   - `evaluation` split: 默认保持官方顺序
+  - `sensor` 特征计算时，无论 train/eval，都会先把 HO3D joints 转到模型/OpenPose 顺序
+    再交给 `MANOHandProcessor`，因为它内部假设的是 thumb/index/middle/ring/pinky 的模型顺序
 - `hamer/utils/pose_utils.py`
   - 评测导出预测结果前，把模型内部顺序转回 HO3D 官方顺序
 
@@ -148,6 +150,100 @@
 
 - 训练监督：必须转成模型顺序
 - 评测导出：必须转回官方顺序
+
+#### 3.5 HO3D 本地打包数据目前已经确认的自洽性
+
+最近新增了一个检查脚本：
+
+- `tools/data_prep/check_packed_mano_consistency.py`
+
+它会读取打包后的 `npz`，并检查：
+
+- `hand_pose`
+- `betas`
+- `hand_keypoints_3d`
+
+这三者在 MANO 几何上是否自洽。
+
+当前在本地 `ho3d_train.npz` 上已经确认：
+
+- `hand_pose / betas / hand_keypoints_3d` 是高度自洽的
+- `as-is` 顺序和 MANO 重建结果几乎完全一致
+- 再额外做一次 `official -> openpose` 重排反而会变差
+
+这说明至少对当前这份本地 train NPZ 而言：
+
+- `MANO` 参数监督本身没有和 `keypoints_3d` 打架
+- 当前保存的 `hand_keypoints_3d` 已经是模型内部顺序
+
+注意：
+
+- 这个结论是针对当前本地导出的那份 `ho3d_train.npz`
+- 如果后面重新导出远程训练集，仍然建议重新跑一次这个检查，确认不同机器上的数据协议没有漂移
+
+#### 3.6 plain HaMeR 在 HO3D-v3 上的当前结论
+
+截至目前，最稳定的 baseline 仍然是：
+
+- 直接使用原始 HaMeR checkpoint
+- 在修正后的 self-eval 链路上评测
+
+大致结果：
+
+- `PA-MPJPE ≈ 13.61`
+- `PA-MPVPE ≈ 13.04`
+
+而 plain HaMeR 的多轮 HO3D finetune 目前都还没有稳定超过这个 baseline。
+
+已经观察到的现象：
+
+- `pose_only` 版本不会像最早那样立刻塌缩，但仍然容易把评测结果训差
+- 调整后的任务导向 loss 比原始 loss 配方更好，但目前仍未超过 base checkpoint
+- 训练过程中经常出现：
+  - `keypoints_3d loss` 下降
+  - `keypoints_2d loss` 升高
+  - 可视化里的整体手方向、投影位置、或手形变差
+
+这不是单纯的“loss 写错了”，而更像是当前训练目标和项目真实需求还没有完全对齐。
+
+#### 3.7 为什么 `global_orient loss` 会下降，但视觉上手反而更怪
+
+这个现象已经在多轮实验里出现过，目前更合理的解释是：
+
+- `global_orient loss` 是参数空间里的 `rotmat` 误差，不是“图像里看起来方向是否正确”的直接指标
+- `keypoints_3d loss` 是 root-relative 的
+  - 它更关心相对骨架结构
+  - 不强约束整手在图像里的朝向和投影
+- `pose_only` 训练里，实际可训练的 `decpose` 同时控制：
+  - `global_orient`
+  - `hand_pose`
+
+这意味着：
+
+- 即使只训练很少一部分参数，也足以把整手根方向和手指姿态一起带偏
+- 模型可能找到一种“3D 相对骨架更像 GT，但 2D 投影更差、视觉更怪”的局部解
+
+所以：
+
+- 不能只看 `train/loss` 或 `loss_global_orient` 是否下降
+- 还必须同时看：
+  - `loss_keypoints_2d`
+  - 可视化里的 2D overlay
+  - 最终 `PA-MPJPE / PA-MPVPE`
+
+### 3.8 当前对 STMF 线的意义
+
+plain HaMeR 这条线目前还没有给出稳定正收益，但最近已经确认：
+
+- HO3D 的 sensor 计算之前确实需要先做 joints 顺序转换
+- 这一点已经修到了 `tools/data_prep/ho3d_process.py`
+
+所以当前更值得继续验证的是：
+
+- 重新导出带正确 sensor 的 HO3D NPZ
+- 在这份数据上重新训练/评测 STMF
+
+相比继续盲目放大 plain HaMeR 的 finetune 强度，这条线现在更可能给出可解释的结果
 
 ### 4. 当前推荐使用方式
 
@@ -191,6 +287,22 @@ conda run -n STMF python tools/data_prep/inspect_packed_gt.py \
 - `official MANO order` 那一列现在只画点和索引编号，用来对照原始官方索引，不用于判断骨架连线是否“像手”
 - 如果检查旧版未修复的 HO3D NPZ，需要改成：
   - `--packed_order official`
+
+如果训练表现持续异常，建议再做一次 MANO 监督自洽检查：
+
+```bash
+conda run -n STMF python tools/data_prep/check_packed_mano_consistency.py \
+  --dataset_file /home/mirage/STMF/_DATA/HO-3D_v3/ho3d_train.npz \
+  --num_samples 4096
+```
+
+这一步的目的不是检查 loss 代码，而是确认打包出来的：
+
+- `hand_pose`
+- `betas`
+- `hand_keypoints_3d`
+
+是否本来就在同一套 MANO 几何语义下自洽。如果这里误差很大，就说明训练时不同监督项本身在“互相打架”。
 
 #### 4.2 评测原始 HaMeR baseline
 

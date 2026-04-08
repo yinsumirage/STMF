@@ -83,7 +83,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     model_cfg.TRAIN.LR = 1e-4
     model_cfg.TRAIN.WEIGHT_DECAY = 1e-4
     model_cfg.GENERAL = CN()
-    model_cfg.GENERAL.NUM_WORKERS = getattr(cfg, 'num_workers', 0)
+    model_cfg.GENERAL.NUM_WORKERS = getattr(cfg, 'num_workers', 4)
     model_cfg.GENERAL.PREFETCH_FACTOR = 2
     model_cfg.GENERAL.LOG_STEPS = cfg.get('log_every_n_steps', 10)
     model_cfg.TRAIN.WINDOW_SIZE = cfg.get('window_size', 5)

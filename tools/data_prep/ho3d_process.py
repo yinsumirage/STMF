@@ -96,6 +96,11 @@ def reorder_ho3d_keypoints_to_model_order(kps_2d, kps_3d):
     return kps_2d[HO3D_OFFICIAL_TO_OPENPOSE], kps_3d[HO3D_OFFICIAL_TO_OPENPOSE]
 
 
+def reorder_ho3d_joints3d_to_model_order(joints_3d):
+    """Convert HO3D official joint order (21, 3) to HaMeR/OpenPose order."""
+    return np.asarray(joints_3d, dtype=np.float32)[HO3D_OFFICIAL_TO_OPENPOSE]
+
+
 def compute_bbox(keypoints_2d, padding=0.25, scale_mult_xy=(1.0, 1.0)):
     """
     Compute center and bbox size in pixel units.
@@ -343,7 +348,11 @@ def process_ho3d_split(
 
                 if joints_3d is not None:
                     try:
-                        result = processor.process_hand_frame(joints_3d, lmin_method='estimate', fist_ratio=fist_ratio)
+                        # Sensor features are defined over the model/OpenPose-style finger groups.
+                        # Even when evaluation keypoints stay in official HO3D order for scoring,
+                        # sensor distances should still be computed from the model-native order.
+                        sensor_joints = reorder_ho3d_joints3d_to_model_order(joints_3d)
+                        result = processor.process_hand_frame(sensor_joints, lmin_method='estimate', fist_ratio=fist_ratio)
                         sensor_res = result['normalized_sensor_values'].astype(np.float32)
                     except Exception:
                         sensor_res = np.zeros(5, dtype=np.float32)
@@ -403,7 +412,10 @@ def process_ho3d_split(
                     betas = np.zeros(10, dtype=np.float32)
 
                 try:
-                    result = processor.process_hand_frame(joints_3d, lmin_method='estimate', fist_ratio=fist_ratio)
+                    # Training keypoints are exported in model/OpenPose order, and the
+                    # sensor processor assumes the same finger-grouped order.
+                    sensor_joints = reorder_ho3d_joints3d_to_model_order(joints_3d)
+                    result = processor.process_hand_frame(sensor_joints, lmin_method='estimate', fist_ratio=fist_ratio)
                     sensor_res = np.asarray(result['normalized_sensor_values'], dtype=np.float32)
                 except Exception:
                     sensor_res = np.zeros(5, dtype=np.float32)

@@ -3,6 +3,8 @@
 defaults:
   - hamer_vit_transformer.yaml
 
+exp_name: hamer_ho3d_finetune
+
 # Conservative HO3D-v3 finetuning recipe:
 # - keep the original HaMeR architecture
 # - freeze the ViT backbone by default

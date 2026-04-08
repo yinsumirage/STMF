@@ -32,7 +32,30 @@
 
 ## 3. 运行入口文件
 
-### 3.1 训练入口
+### 3.1 原始 HaMeR 训练入口
+
+文件：
+
+- `scripts/train.py`
+
+作用：
+
+- 使用原始 HaMeR 的 WebDataset tar 训练链路
+- 支持 conservative finetune
+- 支持从原始 `hamer.ckpt` 初始化
+- 支持 exact resume / weight-only fallback
+
+这个文件现在是 plain HaMeR 的主入口，和 STMF 不是同一条配置/训练模式。
+
+当前特别容易需要改的点：
+
+- `checkpoint` / `ckpt_path` 恢复逻辑
+- freeze 策略
+- Lightning resume 兼容
+- checkpoint 输出目录
+- top-level Hydra 参数如何映射到 `TRAIN.* / GENERAL.*`
+
+### 3.2 STMF 训练入口
 
 文件：
 
@@ -53,7 +76,13 @@
 - validation/test 默认行为
 - STMF 训练超参数注入
 
-### 3.2 评测入口
+注意：
+
+- `train_stmf.py` 当前并不强依赖 `experiment/*.yaml`
+- 它会先读取 base HaMeR config，再在脚本里直接注入 STMF 训练超参数
+- 所以 plain HaMeR 的 experiment yaml 和 STMF 的顶层 Hydra 配置，不要混为一谈
+
+### 3.3 STMF / baseline 评测入口
 
 文件：
 
@@ -77,7 +106,7 @@
 - baseline 对照实验
 - 评测输出 JSON 格式
 
-### 3.3 原始 HaMeR 评测入口
+### 3.4 原始 HaMeR 评测入口
 
 文件：
 
@@ -89,11 +118,11 @@
 
 现在主要用于做对照，确认 `eval_stmf.py --base_hamer` 是否和原版一致。
 
-### 3.4 Demo 入口
+### 3.5 Demo 入口
 
 文件：
 
-- `scripts/demo.py`
+- `demo.py`
 
 作用：
 
@@ -257,6 +286,84 @@
 - HO3D joints 顺序导出逻辑
 
 就进这个文件。
+
+### 6.2 打包结果可视化检查
+
+文件：
+
+- `tools/data_prep/inspect_packed_gt.py`
+
+作用：
+
+- 读取已经导出的 `npz`
+- 把原图、bbox、GT keypoints 可视化出来
+- 用来快速检查当前打包协议是不是和模型监督顺序一致
+
+这里有两个关键概念：
+
+- `packed_order`
+  - 当前 `npz` 里 keypoints 的实际保存顺序
+- `order`
+  - 输出哪些可视化视图
+
+当前推荐用法：
+
+- 新版 train NPZ：
+  - `--packed_order openpose`
+- 旧版未修复 train NPZ：
+  - `--packed_order official`
+
+判断训练监督是否正常时，主要看：
+
+- `openpose/model order` 这一列
+
+### 6.3 MANO 监督一致性检查
+
+文件：
+
+- `tools/data_prep/check_packed_mano_consistency.py`
+
+作用：
+
+- 检查打包后的：
+  - `hand_pose`
+  - `betas`
+  - `hand_keypoints_3d`
+- 是否在同一套 MANO 几何语义下自洽
+
+这个工具不是评测脚本，而是一个“训练监督是否互相打架”的排查工具。
+
+如果后面 plain HaMeR 再次出现：
+
+- loss 在降
+- 可视化和评测却越来越差
+
+建议优先用这个脚本再确认一遍当前导出的 train NPZ。
+
+## 7. 配置与日志目录
+
+当前最常用的 Hydra 配置文件：
+
+- `hamer/configs_hydra/train.yaml`
+- `hamer/configs_hydra/hydra/default.yaml`
+
+当前目录结构约定：
+
+- `task_name`
+  - 控制顶层日志桶，例如 `logs/hamer/...`
+- `exp_name`
+  - 控制实验名，例如 `hamer_ho3d_pose_only_finetune`
+- 时间戳
+  - 控制具体某次 run
+
+所以当前 run 目录长这样：
+
+- `logs/<task_name>/<exp_name>/<timestamp>/`
+
+注意：
+
+- plain HaMeR experiment yaml 里应该显式写 `exp_name`
+- STMF 当前主要走 `train_stmf.py` 内部注入配置，不依赖 plain HaMeR 那套 experiment yaml 体系
 
 ### 6.2 打包结果检查工具
 
