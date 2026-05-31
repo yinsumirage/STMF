@@ -1,5 +1,9 @@
 """
-STMF / HaMeR evaluation entrypoint.
+STMF-v1 / HaMeR evaluation entrypoint.
+
+This remains the baseline evaluation path for the first STMF implementation.
+For the new sensor-guided temporal MANO refinement line, use this file to keep
+HaMeR, HaMeR+EMA, and STMF-v1 comparable while v2 is developed separately.
 
 Examples:
 
@@ -18,6 +22,15 @@ python scripts/eval_stmf.py \
     --dataset HO3D-VAL \
     --batch_size 64 \
     --results_folder results_hamer_v3
+
+Evaluate original HaMeR with sequence-wise EMA smoothing:
+python scripts/eval_stmf.py \
+    --base_hamer \
+    --ema_decay 0.8 \
+    --checkpoint /path/to/hamer.ckpt \
+    --dataset HO3D-VAL \
+    --batch_size 64 \
+    --results_folder results_hamer_ema
 
 Notes:
 - Dataset paths come from `hamer/configs/datasets_stmf.yaml`.
@@ -45,6 +58,7 @@ if hasattr(torch.serialization, 'add_safe_globals'):
 from hamer.datasets import create_dataset
 from hamer.utils import Evaluator, recursive_to
 from hamer.models import load_hamer, load_stmf
+from hamer.utils.geometry import aa_to_rotmat, rotmat_to_aa, perspective_projection
 
 
 def extract_sample(batch, sample_idx: int):
@@ -66,6 +80,97 @@ def prepare_base_hamer_batch(batch: Dict) -> Dict:
         batch = dict(batch)
         batch['img'] = batch['img'][:, -1, ...]
     return batch
+
+
+def get_sequence_key(sample: Dict) -> str:
+    sequence_key = sample.get('sequence_key')
+    if isinstance(sequence_key, list):
+        sequence_key = sequence_key[0]
+    if sequence_key is None:
+        idx = sample.get('idx')
+        if isinstance(idx, torch.Tensor):
+            return f"idx_{int(idx.item())}"
+        return "seq_0"
+    return str(sequence_key)
+
+
+def build_pose_axis_angle(output: Dict) -> torch.Tensor:
+    if 'pred_pose' in output:
+        return output['pred_pose']
+    pred_mano_params = output['pred_mano_params']
+    global_orient = rotmat_to_aa(pred_mano_params['global_orient'].reshape(-1, 3, 3)).reshape(pred_mano_params['global_orient'].shape[0], 3)
+    hand_pose = rotmat_to_aa(pred_mano_params['hand_pose'].reshape(-1, 3, 3)).reshape(pred_mano_params['hand_pose'].shape[0], 45)
+    return torch.cat([global_orient, hand_pose], dim=1)
+
+
+def rebuild_output_with_smoothed_params(model, output: Dict, pose_aa: torch.Tensor, betas: torch.Tensor, pred_cam: torch.Tensor) -> Dict:
+    batch_size = pose_aa.shape[0]
+    device = pose_aa.device
+    dtype = pose_aa.dtype
+
+    pred_mano_params = {
+        'global_orient': aa_to_rotmat(pose_aa[:, :3].reshape(-1, 3)).reshape(batch_size, 1, 3, 3),
+        'hand_pose': aa_to_rotmat(pose_aa[:, 3:].reshape(-1, 3)).reshape(batch_size, 15, 3, 3),
+        'betas': betas.reshape(batch_size, -1),
+    }
+    focal_length = model.cfg.EXTRA.FOCAL_LENGTH * torch.ones(batch_size, 2, device=device, dtype=dtype)
+    pred_cam_t = torch.stack(
+        [
+            pred_cam[:, 1],
+            pred_cam[:, 2],
+            2 * focal_length[:, 0] / (model.cfg.MODEL.IMAGE_SIZE * pred_cam[:, 0] + 1e-9),
+        ],
+        dim=-1,
+    )
+
+    mano_output = model.mano(**{k: v.float() for k, v in pred_mano_params.items()}, pose2rot=False)
+    pred_keypoints_3d = mano_output.joints
+    pred_vertices = mano_output.vertices
+    pred_keypoints_2d = perspective_projection(
+        pred_keypoints_3d,
+        translation=pred_cam_t,
+        focal_length=focal_length / model.cfg.MODEL.IMAGE_SIZE,
+    )
+
+    updated = dict(output)
+    updated['pred_cam'] = pred_cam
+    updated['pred_pose'] = pose_aa
+    updated['pred_cam_t'] = pred_cam_t
+    updated['pred_mano_params'] = {k: v.clone() for k, v in pred_mano_params.items()}
+    updated['pred_keypoints_3d'] = pred_keypoints_3d.reshape(batch_size, -1, 3)
+    updated['pred_vertices'] = pred_vertices.reshape(batch_size, -1, 3)
+    updated['pred_keypoints_2d'] = pred_keypoints_2d.reshape(batch_size, -1, 2)
+    updated['focal_length'] = focal_length
+    return updated
+
+
+def maybe_apply_ema(model, output: Dict, sequence_key: str, ema_decay: float, ema_cache: Dict[str, Dict[str, torch.Tensor]]) -> Dict:
+    if ema_decay <= 0:
+        return output
+
+    pose_aa = build_pose_axis_angle(output)
+    betas = output['pred_mano_params']['betas'].reshape(pose_aa.shape[0], -1)
+    pred_cam = output['pred_cam'].reshape(pose_aa.shape[0], -1)
+
+    cache = ema_cache.get(sequence_key)
+    if cache is None:
+        ema_pose = pose_aa
+        ema_betas = betas
+        ema_cam = pred_cam
+    else:
+        cache_pose = cache['pose'].to(device=pose_aa.device, dtype=pose_aa.dtype)
+        cache_betas = cache['betas'].to(device=betas.device, dtype=betas.dtype)
+        cache_cam = cache['cam'].to(device=pred_cam.device, dtype=pred_cam.dtype)
+        ema_pose = ema_decay * cache_pose + (1.0 - ema_decay) * pose_aa
+        ema_betas = ema_decay * cache_betas + (1.0 - ema_decay) * betas
+        ema_cam = ema_decay * cache_cam + (1.0 - ema_decay) * pred_cam
+
+    ema_cache[sequence_key] = {
+        'pose': ema_pose.detach().cpu(),
+        'betas': ema_betas.detach().cpu(),
+        'cam': ema_cam.detach().cpu(),
+    }
+    return rebuild_output_with_smoothed_params(model, output, ema_pose, ema_betas, ema_cam)
 
 
 def inject_stateful_history(sample: Dict, pose_cache: Dict[int, torch.Tensor], beta_cache: Dict[str, torch.Tensor]) -> Dict:
@@ -110,6 +215,7 @@ def main():
     parser.add_argument('--exp_name', type=str, default=None, help='Experiment name')
     parser.add_argument('--stateless', dest='stateless', action='store_true', default=False, help='Disable autoregressive pose history and use dataset pose_seq as-is')
     parser.add_argument('--base_hamer', dest='base_hamer', action='store_true', default=False, help='Evaluate the original HaMeR model on datasets_stmf.yaml using only the current frame image')
+    parser.add_argument('--ema_decay', type=float, default=0.0, help='Apply sequence-wise EMA smoothing to pose/betas/camera outputs; useful for the HaMeR+EMA baseline')
 
     args = parser.parse_args()
     os.makedirs(args.results_folder, exist_ok=True)
@@ -165,32 +271,31 @@ def run_eval(model, model_cfg, dataset_cfg, dataset_name, device, args):
     try:
         pose_cache = {}
         beta_cache = {}
+        ema_cache = {}
         for i, batch in enumerate(tqdm(dataloader, desc=dataset_name)):
-            if args.base_hamer:
-                batch = recursive_to(batch, device)
-                batch = prepare_base_hamer_batch(batch)
-                with torch.no_grad():
-                    out = model(batch)
-                evaluator(out, batch)
-            else:
-                batch_size = batch['img'].shape[0]
-                for sample_idx in range(batch_size):
-                    sample = extract_sample(batch, sample_idx)
-                    sample = recursive_to(sample, device)
+            batch_size = batch['img'].shape[0]
+            for sample_idx in range(batch_size):
+                sample = extract_sample(batch, sample_idx)
+                sample = recursive_to(sample, device)
+                sequence_key = get_sequence_key(sample)
+
+                if args.base_hamer:
+                    model_batch = prepare_base_hamer_batch(sample)
+                else:
+                    model_batch = sample
                     if not args.stateless:
-                        sample = inject_stateful_history(sample, pose_cache, beta_cache)
+                        model_batch = inject_stateful_history(model_batch, pose_cache, beta_cache)
 
-                    with torch.no_grad():
-                        out = model(sample)
+                with torch.no_grad():
+                    out = model(model_batch)
 
-                    evaluator(out, sample)
-                    if 'pred_pose' in out and 'idx' in sample:
-                        pose_cache[int(sample['idx'].item())] = out['pred_pose'][0].detach().cpu()
-                    if 'pred_mano_params' in out and 'betas' in out['pred_mano_params'] and 'sequence_key' in sample:
-                        sequence_key = sample['sequence_key']
-                        if isinstance(sequence_key, list):
-                            sequence_key = sequence_key[0]
-                        beta_cache[str(sequence_key)] = out['pred_mano_params']['betas'][0].detach().cpu()
+                out = maybe_apply_ema(model, out, sequence_key, args.ema_decay, ema_cache)
+                evaluator(out, model_batch)
+
+                if 'pred_pose' in out and 'idx' in model_batch:
+                    pose_cache[int(model_batch['idx'].item())] = out['pred_pose'][0].detach().cpu()
+                if 'pred_mano_params' in out and 'betas' in out['pred_mano_params']:
+                    beta_cache[sequence_key] = out['pred_mano_params']['betas'][0].detach().cpu()
 
             if i % args.log_freq == args.log_freq - 1:
                 evaluator.log()

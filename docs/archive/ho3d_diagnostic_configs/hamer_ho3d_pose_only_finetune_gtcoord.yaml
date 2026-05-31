@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - hamer_ho3d_pose_only_finetune.yaml
+
+exp_name: hamer_ho3d_pose_only_finetune_gtcoord
+
+# HO3D-specific plain HaMeR finetune:
+# keep the conservative pose-only recipe,
+# but reinterpret GT supervision during loss computation so that
+# keypoints_3d + global_orient are compared in the empirically correct frame.
+gt_coord_recipe: flip_gt_keypoints_3d_global_orient

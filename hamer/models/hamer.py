@@ -5,7 +5,7 @@ from typing import Any, Dict, Mapping, Optional, Tuple, Union
 from yacs.config import CfgNode
 
 from ..utils import SkeletonRenderer, MeshRenderer
-from ..utils.geometry import aa_to_rotmat, perspective_projection
+from ..utils.geometry import aa_to_rotmat, perspective_projection, rotmat_to_aa
 from ..utils.pylogger import get_pylogger
 from .backbones import create_backbone
 from .heads import build_mano_head
@@ -14,6 +14,13 @@ from .losses import Keypoint3DLoss, Keypoint2DLoss, ParameterLoss
 from . import MANO
 
 log = get_pylogger(__name__)
+
+GT_COORD_RECIPE_CHOICES = {
+    'none',
+    'flip_gt_keypoints_3d',
+    'flip_gt_keypoints_3d_global_orient',
+    'flip_gt_keypoints_3d_mano',
+}
 
 class HAMER(pl.LightningModule):
 
@@ -79,6 +86,61 @@ class HAMER(pl.LightningModule):
 
     def on_validation_start(self) -> None:
         self._keep_frozen_modules_in_eval()
+
+    @staticmethod
+    def _coord_change_matrix(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+        return torch.tensor(
+            [[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]],
+            device=device,
+            dtype=dtype,
+        )
+
+    @classmethod
+    def _apply_coord_change_to_points(cls, points: torch.Tensor) -> torch.Tensor:
+        coord_change = cls._coord_change_matrix(points.device, points.dtype)
+        transformed_xyz = torch.einsum('ij,...j->...i', coord_change, points[..., :3])
+        transformed = points.clone()
+        transformed[..., :3] = transformed_xyz
+        return transformed
+
+    @classmethod
+    def _apply_coord_change_to_global_orient_axis_angle(cls, aa: torch.Tensor) -> torch.Tensor:
+        coord_change = cls._coord_change_matrix(aa.device, aa.dtype)
+        rotmat = aa_to_rotmat(aa.reshape(-1, 3))
+        transformed_rotmat = coord_change.unsqueeze(0) @ rotmat
+        return rotmat_to_aa(transformed_rotmat).reshape_as(aa)
+
+    @classmethod
+    def _apply_coord_change_to_local_axis_angle(cls, aa: torch.Tensor) -> torch.Tensor:
+        coord_change = cls._coord_change_matrix(aa.device, aa.dtype)
+        rotmat = aa_to_rotmat(aa.reshape(-1, 3))
+        transformed_rotmat = coord_change.unsqueeze(0) @ rotmat @ coord_change.unsqueeze(0)
+        return rotmat_to_aa(transformed_rotmat).reshape_as(aa)
+
+    def _transform_gt_batch_for_loss(self, batch: Dict) -> Dict:
+        recipe = str(getattr(self.cfg, 'gt_coord_recipe', 'none'))
+        if recipe not in GT_COORD_RECIPE_CHOICES:
+            raise ValueError(f'Unknown gt_coord_recipe: {recipe}')
+        if recipe == 'none':
+            return batch
+
+        transformed_batch = dict(batch)
+
+        if recipe in {'flip_gt_keypoints_3d', 'flip_gt_keypoints_3d_global_orient', 'flip_gt_keypoints_3d_mano'}:
+            transformed_batch['keypoints_3d'] = self._apply_coord_change_to_points(batch['keypoints_3d'])
+
+        if recipe in {'flip_gt_keypoints_3d_global_orient', 'flip_gt_keypoints_3d_mano'}:
+            transformed_mano_params = dict(batch['mano_params'])
+            transformed_mano_params['global_orient'] = self._apply_coord_change_to_global_orient_axis_angle(
+                batch['mano_params']['global_orient']
+            )
+            if recipe == 'flip_gt_keypoints_3d_mano':
+                transformed_mano_params['hand_pose'] = self._apply_coord_change_to_local_axis_angle(
+                    batch['mano_params']['hand_pose'].reshape(-1, 3)
+                ).reshape_as(batch['mano_params']['hand_pose'])
+            transformed_batch['mano_params'] = transformed_mano_params
+
+        return transformed_batch
 
     def get_parameters(self):
         all_params = list(self.mano_head.parameters())
@@ -168,6 +230,8 @@ class HAMER(pl.LightningModule):
             torch.Tensor : Total loss for current batch
         """
 
+        transformed_batch = self._transform_gt_batch_for_loss(batch)
+
         pred_mano_params = output['pred_mano_params']
         pred_keypoints_2d = output['pred_keypoints_2d']
         pred_keypoints_3d = output['pred_keypoints_3d']
@@ -178,11 +242,11 @@ class HAMER(pl.LightningModule):
         dtype = pred_mano_params['hand_pose'].dtype
 
         # Get annotations
-        gt_keypoints_2d = batch['keypoints_2d']
-        gt_keypoints_3d = batch['keypoints_3d']
-        gt_mano_params = batch['mano_params']
-        has_mano_params = batch['has_mano_params']
-        is_axis_angle = batch['mano_params_is_axis_angle']
+        gt_keypoints_2d = transformed_batch['keypoints_2d']
+        gt_keypoints_3d = transformed_batch['keypoints_3d']
+        gt_mano_params = transformed_batch['mano_params']
+        has_mano_params = transformed_batch['has_mano_params']
+        is_axis_angle = transformed_batch['mano_params_is_axis_angle']
 
         # Compute 3D keypoint loss
         loss_keypoints_2d = self.keypoint_2d_loss(pred_keypoints_2d, gt_keypoints_2d)
@@ -234,6 +298,9 @@ class HAMER(pl.LightningModule):
         pred_keypoints_3d = output['pred_keypoints_3d'].detach().reshape(batch_size, -1, 3)
         pred_vertices = output['pred_vertices'].detach().reshape(batch_size, -1, 3)
         focal_length = output['focal_length'].detach().reshape(batch_size, 2)
+        camera_center = output.get('camera_center', None)
+        if camera_center is not None:
+            camera_center = camera_center.detach().reshape(batch_size, 2)
         gt_keypoints_3d = batch['keypoints_3d']
         gt_keypoints_2d = batch['keypoints_2d']
         losses = output['losses']
@@ -260,7 +327,8 @@ class HAMER(pl.LightningModule):
                                                                images[:num_images].cpu().numpy(),
                                                                pred_keypoints_2d[:num_images].cpu().numpy(),
                                                                gt_keypoints_2d[:num_images].cpu().numpy(),
-                                                               focal_length=focal_length[:num_images].cpu().numpy())
+                                                               focal_length=focal_length[:num_images].cpu().numpy(),
+                                                               camera_center=None if camera_center is None else camera_center[:num_images].cpu().numpy())
         if write_to_summary_writer:
             summary_writer.add_image('%s/predictions' % mode, predictions, step_count)
 

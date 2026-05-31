@@ -53,20 +53,21 @@ class MeshRenderer:
         self.camera_center = [self.img_res // 2, self.img_res // 2]
         self.faces = faces
 
-    def visualize(self, vertices, camera_translation, images, focal_length=None, nrow=3, padding=2):
+    def visualize(self, vertices, camera_translation, images, focal_length=None, camera_center=None, nrow=3, padding=2):
         images_np = np.transpose(images, (0,2,3,1))
         rend_imgs = []
         for i in range(vertices.shape[0]):
-            fl = self.focal_length
-            rend_img = torch.from_numpy(np.transpose(self.__call__(vertices[i], camera_translation[i], images_np[i], focal_length=fl, side_view=False), (2,0,1))).float()
-            rend_img_side = torch.from_numpy(np.transpose(self.__call__(vertices[i], camera_translation[i], images_np[i], focal_length=fl, side_view=True), (2,0,1))).float()
+            fl = focal_length[i] if focal_length is not None else self.focal_length
+            cc = camera_center[i] if camera_center is not None else None
+            rend_img = torch.from_numpy(np.transpose(self.__call__(vertices[i], camera_translation[i], images_np[i], focal_length=fl, camera_center=cc, side_view=False), (2,0,1))).float()
+            rend_img_side = torch.from_numpy(np.transpose(self.__call__(vertices[i], camera_translation[i], images_np[i], focal_length=fl, camera_center=cc, side_view=True), (2,0,1))).float()
             rend_imgs.append(torch.from_numpy(images[i]))
             rend_imgs.append(rend_img)
             rend_imgs.append(rend_img_side)
         rend_imgs = make_grid(rend_imgs, nrow=nrow, padding=padding)
         return rend_imgs
 
-    def visualize_tensorboard(self, vertices, camera_translation, images, pred_keypoints, gt_keypoints, focal_length=None, nrow=5, padding=2):
+    def visualize_tensorboard(self, vertices, camera_translation, images, pred_keypoints, gt_keypoints, focal_length=None, camera_center=None, nrow=5, padding=2):
         images_np = np.transpose(images, (0,2,3,1))
         rend_imgs = []
         pred_keypoints = np.concatenate((pred_keypoints, np.ones_like(pred_keypoints)[:, :, [0]]), axis=-1)
@@ -74,9 +75,10 @@ class MeshRenderer:
         gt_keypoints[:, :, :-1] = self.img_res * (gt_keypoints[:, :, :-1] + 0.5)
         #keypoint_matches = [(1, 12), (2, 8), (3, 7), (4, 6), (5, 9), (6, 10), (7, 11), (8, 14), (9, 2), (10, 1), (11, 0), (12, 3), (13, 4), (14, 5)]
         for i in range(vertices.shape[0]):
-            fl = self.focal_length
-            rend_img = torch.from_numpy(np.transpose(self.__call__(vertices[i], camera_translation[i], images_np[i], focal_length=fl, side_view=False), (2,0,1))).float()
-            rend_img_side = torch.from_numpy(np.transpose(self.__call__(vertices[i], camera_translation[i], images_np[i], focal_length=fl, side_view=True), (2,0,1))).float()
+            fl = focal_length[i] if focal_length is not None else self.focal_length
+            cc = camera_center[i] if camera_center is not None else None
+            rend_img = torch.from_numpy(np.transpose(self.__call__(vertices[i], camera_translation[i], images_np[i], focal_length=fl, camera_center=cc, side_view=False), (2,0,1))).float()
+            rend_img_side = torch.from_numpy(np.transpose(self.__call__(vertices[i], camera_translation[i], images_np[i], focal_length=fl, camera_center=cc, side_view=True), (2,0,1))).float()
             hand_keypoints = pred_keypoints[i, :21]
             #extra_keypoints = pred_keypoints[i, -19:]
             #for pair in keypoint_matches:
@@ -96,7 +98,7 @@ class MeshRenderer:
         rend_imgs = make_grid(rend_imgs, nrow=nrow, padding=padding)
         return rend_imgs
 
-    def __call__(self, vertices, camera_translation, image, focal_length=5000, text=None, resize=None, side_view=False, baseColorFactor=(1.0, 1.0, 0.9, 1.0), rot_angle=90):
+    def __call__(self, vertices, camera_translation, image, focal_length=5000, camera_center=None, text=None, resize=None, side_view=False, baseColorFactor=(1.0, 1.0, 0.9, 1.0), rot_angle=90):
         renderer = pyrender.OffscreenRenderer(viewport_width=image.shape[1],
                                               viewport_height=image.shape[0],
                                               point_size=1.0)
@@ -123,9 +125,24 @@ class MeshRenderer:
 
         camera_pose = np.eye(4)
         camera_pose[:3, 3] = camera_translation
-        camera_center = [image.shape[1] / 2., image.shape[0] / 2.]
-        camera = pyrender.IntrinsicsCamera(fx=focal_length, fy=focal_length,
-                                           cx=camera_center[0], cy=camera_center[1])
+        if camera_center is None:
+            camera_center_px = [image.shape[1] / 2.0, image.shape[0] / 2.0]
+        else:
+            camera_center = np.asarray(camera_center, dtype=np.float32).reshape(-1)
+            camera_center_px = [
+                image.shape[1] * (float(camera_center[0]) + 0.5),
+                image.shape[0] * (float(camera_center[1]) + 0.5),
+            ]
+        if np.isscalar(focal_length):
+            fx = fy = float(focal_length)
+        else:
+            focal_length = np.asarray(focal_length, dtype=np.float32).reshape(-1)
+            if focal_length.size == 1:
+                fx = fy = float(focal_length[0])
+            else:
+                fx, fy = float(focal_length[0]), float(focal_length[1])
+        camera = pyrender.IntrinsicsCamera(fx=fx, fy=fy,
+                                           cx=camera_center_px[0], cy=camera_center_px[1])
         scene.add(camera, pose=camera_pose)
 
 

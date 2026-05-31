@@ -25,7 +25,9 @@ defaults:
 
 # task name controls the top-level logging bucket, e.g. logs/train/runs/...
 # Keep this broad; specific experiment names should come from `exp_name`.
-task_name: "hamer"
+
+#task_name: "hamer"
+task_name: "hamer_overfit"
 
 # tags to help you identify your experiments
 # you can overwrite this in experiment configs
@@ -44,10 +46,10 @@ ckpt_path: null
 seed: null
 
 # Training Parameters
-epochs: 20
-max_steps: null
+epochs: 10
+max_steps: 500000
 batch_size: null  # 64
-num_workers: 4
+num_workers:  16
 prefetch_factor: null
 lr: null
 weight_decay: null
@@ -69,11 +71,11 @@ freeze_camera_head: False
 freeze_shape_head: False
 
 # GPU and Strategy
-devices: [0, 1]
-#device: 0
+devices: [0,1]
+#device: 1
 accelerator: gpu
-strategy: ddp_find_unused_parameters_true
-#strategy: auto
+#strategy: ddp_find_unused_parameters_true
+strategy: auto
 
 # Checkpoint Frequencies
 checkpoint_step_frequency: 1000

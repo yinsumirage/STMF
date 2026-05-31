@@ -1,14 +1,33 @@
 """
-STMF training entrypoint.
+STMF-v1 training entrypoint.
+
+This remains the baseline training path for the first STMF implementation.
+The new mainline is sensor-guided temporal MANO refinement; v1 is kept as a
+comparison point against HaMeR, HaMeR+EMA, and the narrower v2 refiner.
 
 Typical usage:
 
 conda run -n STMF python scripts/train_stmf.py \
   checkpoint=/path/to/hamer.ckpt \
+  exp_name=stmf_ho3d_pose_sensor \
   batch_size=64 \
   devices=2 \
   epochs=20 \
-  window_size=5
+  window_size=5 \
+  history_mode=pose_sensor \
+  sensor_mode=pseudo
+
+Pose-only temporal baseline:
+
+conda run -n STMF python scripts/train_stmf.py \
+  checkpoint=/path/to/hamer.ckpt \
+  exp_name=stmf_ho3d_pose_only \
+  batch_size=32 \
+  devices=1 \
+  epochs=20 \
+  window_size=5 \
+  history_mode=pose \
+  sensor_mode=off
 
 Notes:
 - This script trains the STMF model on top of a HaMeR checkpoint.
@@ -80,19 +99,31 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     model_cfg.defrost()
     model_cfg.TRAIN = CN()
     model_cfg.TRAIN.BATCH_SIZE = cfg.get('batch_size', 4) # Reduced batch size due to sliding window holding T frames
-    model_cfg.TRAIN.LR = 1e-4
-    model_cfg.TRAIN.WEIGHT_DECAY = 1e-4
+    model_cfg.TRAIN.LR = float(cfg.get('lr', 1e-4))
+    model_cfg.TRAIN.WEIGHT_DECAY = float(cfg.get('weight_decay', 1e-4))
     model_cfg.GENERAL = CN()
     model_cfg.GENERAL.NUM_WORKERS = getattr(cfg, 'num_workers', 4)
     model_cfg.GENERAL.PREFETCH_FACTOR = 2
     model_cfg.GENERAL.LOG_STEPS = cfg.get('log_every_n_steps', 10)
     model_cfg.TRAIN.WINDOW_SIZE = cfg.get('window_size', 5)
+    model_cfg.TRAIN.HISTORY_MODE = cfg.get('history_mode', 'pose_sensor')
+    model_cfg.TRAIN.SENSOR_MODE = cfg.get('sensor_mode', 'pseudo')
+    model_cfg.TRAIN.SENSOR_FIST_RATIO = float(cfg.get('sensor_fist_ratio', 0.5))
+    model_cfg.TRAIN.SENSOR_NOISE_STD = float(cfg.get('sensor_noise_std', 0.02))
+    model_cfg.TRAIN.SENSOR_DROPOUT = float(cfg.get('sensor_dropout', 0.2))
+    model_cfg.TRAIN.SENSOR_CHANNEL_DROPOUT = float(cfg.get('sensor_channel_dropout', 0.1))
+    model_cfg.TRAIN.SENSOR_TEMPORAL_DROPOUT = float(cfg.get('sensor_temporal_dropout', 0.1))
+    model_cfg.TRAIN.POSE_NOISE_STD = float(cfg.get('pose_noise_std', 0.02))
     model_cfg.MODEL.BETA_MOMENTUM = cfg.get('beta_momentum', 0.9)
     
     if not hasattr(model_cfg, 'LOSS_WEIGHTS'):
         model_cfg.LOSS_WEIGHTS = CN()
     model_cfg.LOSS_WEIGHTS.SMOOTHNESS = 10.0
-    model_cfg.LOSS_WEIGHTS.FK_SENSOR = 50.0
+    use_sensor_history = (
+        str(model_cfg.TRAIN.HISTORY_MODE).lower() == 'pose_sensor'
+        and str(model_cfg.TRAIN.SENSOR_MODE).lower() != 'off'
+    )
+    model_cfg.LOSS_WEIGHTS.FK_SENSOR = 50.0 if use_sensor_history else 0.0
     model_cfg.freeze()
 
     # Output directory mapping

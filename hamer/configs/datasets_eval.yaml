@@ -1,71 +1,74 @@
+# Default evaluation datasets for the local STMF checkout.
+# Paths are repo-relative so eval scripts work without machine-specific `/data` mounts.
+
 FREIHAND-VAL:
     TYPE: ImageDataset
-    DATASET_FILE: /data/hamer_evaluation_data/freihand_val.npz
-    IMG_DIR: /data/hand_data/FreiHAND_pub_v2/evaluation/rgb/
+    DATASET_FILE: _DATA/hamer_evaluation_data/freihand_val.npz
+    IMG_DIR: _DATA/FreiHAND_pub_v2/evaluation/rgb/
     KEYPOINT_LIST: [0] # Dummy
 
 HO3D-VAL:
     TYPE: ImageDataset
-    DATASET_FILE: /data/hamer_evaluation_data/ho3d_val.npz
-    IMG_DIR: /data/hand_data/HO-3D_v3/evaluation
+    DATASET_FILE: _DATA/hamer_evaluation_data/ho3d_val.npz
+    IMG_DIR: _DATA/HO-3D_v3/evaluation
     KEYPOINT_LIST: [0] # Dummy
 
 HO3D-VAL-SELF:
     TYPE: ImageDataset
-    DATASET_FILE: /data/hand_data/HO-3D_v3/ho3d_evaluation.npz
-    IMG_DIR: /data/hand_data/HO-3D_v3
+    DATASET_FILE: _DATA/ho3d_evaluation.npz
+    IMG_DIR: _DATA/HO-3D_v3
     KEYPOINT_LIST: [0] # Dummy
 
 EGO4D-TEST-ALL:
     TYPE: ImageDataset
-    DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/TEST_ego4d_img_all.npz
-    IMG_DIR: /home/user/datasets/HInt_annotation_partial/TEST_ego4d_img/
+    DATASET_FILE: _DATA/hamer_evaluation_data/TEST_ego4d_img_all.npz
+    IMG_DIR: _DATA/HInt_annotation_partial/TEST_ego4d_img/
     KEYPOINT_LIST: [0] # Dummy
 
 EGO4D-TEST-VIS:
     TYPE: ImageDataset
-    DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/TEST_ego4d_img_vis.npz
-    IMG_DIR: /home/user/datasets/HInt_annotation_partial/TEST_ego4d_img/
+    DATASET_FILE: _DATA/hamer_evaluation_data/TEST_ego4d_img_vis.npz
+    IMG_DIR: _DATA/HInt_annotation_partial/TEST_ego4d_img/
     KEYPOINT_LIST: [0] # Dummy
 
 EGO4D-TEST-OCC:
     TYPE: ImageDataset
-    DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/TEST_ego4d_img_occ.npz
-    IMG_DIR: /home/user/datasets/HInt_annotation_partial/TEST_ego4d_img/
+    DATASET_FILE: _DATA/hamer_evaluation_data/TEST_ego4d_img_occ.npz
+    IMG_DIR: _DATA/HInt_annotation_partial/TEST_ego4d_img/
     KEYPOINT_LIST: [0] # Dummy
 
 EPICK-TEST-ALL:
     TYPE: ImageDataset
-    DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/TEST_epick_img_all.npz
-    IMG_DIR: /home/mirage/STMF/_DATA/HInt_annotation_partial/TEST_epick_img/
+    DATASET_FILE: _DATA/hamer_evaluation_data/TEST_epick_img_all.npz
+    IMG_DIR: _DATA/HInt_annotation_partial/TEST_epick_img/
     KEYPOINT_LIST: [0] # Dummy
 
 EPICK-TEST-VIS:
     TYPE: ImageDataset
-    DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/TEST_epick_img_vis.npz
-    IMG_DIR: /home/mirage/STMF/_DATA/HInt_annotation_partial/TEST_epick_img/
+    DATASET_FILE: _DATA/hamer_evaluation_data/TEST_epick_img_vis.npz
+    IMG_DIR: _DATA/HInt_annotation_partial/TEST_epick_img/
     KEYPOINT_LIST: [0] # Dummy
 
 EPICK-TEST-OCC:
     TYPE: ImageDataset
-    DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/TEST_epick_img_occ.npz
-    IMG_DIR: /home/mirage/STMF/_DATA/HInt_annotation_partial/TEST_epick_img/
+    DATASET_FILE: _DATA/hamer_evaluation_data/TEST_epick_img_occ.npz
+    IMG_DIR: _DATA/HInt_annotation_partial/TEST_epick_img/
     KEYPOINT_LIST: [0] # Dummy
 
 NEWDAYS-TEST-ALL:
     TYPE: ImageDataset
-    DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/TEST_newdays_img_all.npz
-    IMG_DIR: /home/mirage/STMF/_DATA/HInt_annotation_partial/TEST_newdays_img/
+    DATASET_FILE: _DATA/hamer_evaluation_data/TEST_newdays_img_all.npz
+    IMG_DIR: _DATA/HInt_annotation_partial/TEST_newdays_img/
     KEYPOINT_LIST: [0] # Dummy
 
 NEWDAYS-TEST-VIS:
     TYPE: ImageDataset
-    DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/TEST_newdays_img_vis.npz
-    IMG_DIR: /home/mirage/STMF/_DATA/HInt_annotation_partial/TEST_newdays_img/
+    DATASET_FILE: _DATA/hamer_evaluation_data/TEST_newdays_img_vis.npz
+    IMG_DIR: _DATA/HInt_annotation_partial/TEST_newdays_img/
     KEYPOINT_LIST: [0] # Dummy
 
 NEWDAYS-TEST-OCC:
     TYPE: ImageDataset
-    DATASET_FILE: /home/mirage/STMF/_DATA/hamer_evaluation_data/TEST_newdays_img_occ.npz
-    IMG_DIR: /home/mirage/STMF/_DATA/HInt_annotation_partial/TEST_newdays_img/
+    DATASET_FILE: _DATA/hamer_evaluation_data/TEST_newdays_img_occ.npz
+    IMG_DIR: _DATA/HInt_annotation_partial/TEST_newdays_img/
     KEYPOINT_LIST: [0] # Dummy

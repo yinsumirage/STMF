@@ -15,11 +15,13 @@ Main responsibilities:
 import os
 import copy
 import json
+import re
 import torch
 import numpy as np
 from typing import Dict, List, Tuple
 
 from .image_dataset import ImageDataset
+from ..utils.sensor_utils import compute_pseudo_sensor_from_model_joints, apply_sensor_augmentations
 
 
 class TemporalImageDataset(ImageDataset):
@@ -45,15 +47,19 @@ class TemporalImageDataset(ImageDataset):
         self.seq_len = kwargs.get('window_size', seq_len)
         self.stride = stride
         self.train = train
-        self.sequence_keys = self._resolve_sequence_keys()
+        self.sensor_mode = str(self.cfg.TRAIN.get('SENSOR_MODE', 'pseudo')).lower()
+        self.history_mode = str(self.cfg.TRAIN.get('HISTORY_MODE', 'pose_sensor')).lower()
+        self.sensor_fist_ratio = float(self.cfg.TRAIN.get('SENSOR_FIST_RATIO', 0.5))
+        self.sensor_noise_std = float(self.cfg.TRAIN.get('SENSOR_NOISE_STD', 0.0))
+        self.sensor_dropout = float(self.cfg.TRAIN.get('SENSOR_DROPOUT', 0.0))
+        self.sensor_channel_dropout = float(self.cfg.TRAIN.get('SENSOR_CHANNEL_DROPOUT', 0.0))
+        self.sensor_temporal_dropout = float(self.cfg.TRAIN.get('SENSOR_TEMPORAL_DROPOUT', 0.0))
+        self.pose_noise_std = float(self.cfg.TRAIN.get('POSE_NOISE_STD', 0.02))
+        self.sequence_keys, self.frame_orders = self._resolve_sequence_metadata()
         self.sequence_start = self._compute_sequence_starts()
         
-        # 2. Try to load 5-finger physical distance sensor data
-        if 'sensor' in self.data:
-            self.sensor_data_source = self.data['sensor'].astype(np.float32)
-            print(f"Loaded sensor data from NPZ: {self.sensor_data_source.shape}")
-        else:
-            self.sensor_data_source = np.zeros((len(self.center), 5), dtype=np.float32)
+        # 2. Resolve 5D sensor source.
+        self.sensor_data_source = self._build_sensor_source()
 
         # 3. HO3D-specific Filter: Use official evaluation.txt to match the 20137 count
         self.valid_subset_mask = None
@@ -111,15 +117,15 @@ class TemporalImageDataset(ImageDataset):
 
         return valid_seqs
 
-    def _resolve_sequence_keys(self) -> List[str]:
+    def _resolve_sequence_metadata(self) -> Tuple[List[str], np.ndarray]:
         """
-        Recover stable sequence identifiers.
+        Recover stable sequence identifiers and frame ordering.
         Priority:
         1. Existing personid from NPZ.
         2. Sequence-like prefix parsed from imgname.
         3. Fallback to a single sequence.
         """
-        derived_ids, derived_keys = self._derive_personids_from_imgname()
+        derived_ids, derived_keys, frame_orders = self._derive_personids_from_imgname()
         personid = np.asarray(self.personid).reshape(-1)
 
         if derived_ids is not None:
@@ -128,34 +134,115 @@ class TemporalImageDataset(ImageDataset):
             # Old exports sometimes leave personid all-zero even when imgname spans multiple sequences.
             if loaded_unique <= 1 < derived_unique:
                 self.personid = derived_ids
-                return derived_keys
+                return derived_keys, frame_orders
 
         if len(np.unique(personid)) > 1:
-            return [f"pid_{int(pid)}" for pid in personid.tolist()]
+            return [f"pid_{int(pid)}" for pid in personid.tolist()], frame_orders
 
         if derived_keys is not None:
-            return derived_keys
+            return derived_keys, frame_orders
 
-        return ['seq_0'] * len(self.imgname)
+        return ['seq_0'] * len(self.imgname), frame_orders
 
-    def _derive_personids_from_imgname(self) -> Tuple[np.ndarray, List[str]]:
+    def _derive_personids_from_imgname(self) -> Tuple[np.ndarray, List[str], np.ndarray]:
         """
-        Infer sequence ids from paths like:
-          train/ABF10/rgb/0001.jpg -> ABF10
-          evaluation/SM1/rgb/0001.jpg -> SM1
+        Infer sequence ids and frame ordering from common path conventions.
         """
         sequence_names = []
+        frame_orders = []
         for raw_name in self.imgname:
             name = raw_name.decode('utf-8') if isinstance(raw_name, bytes) else str(raw_name)
-            parts = name.replace('\\', '/').split('/')
-            if len(parts) >= 4 and parts[2] == 'rgb':
-                sequence_names.append(parts[1])
-            else:
-                sequence_names.append('seq_0')
+            seq_key, frame_order = self._parse_sequence_from_name(name)
+            sequence_names.append(seq_key)
+            frame_orders.append(frame_order)
 
         unique_names = {name: idx for idx, name in enumerate(dict.fromkeys(sequence_names))}
         derived_ids = np.array([unique_names[name] for name in sequence_names], dtype=np.int32)
-        return derived_ids, sequence_names
+        return derived_ids, sequence_names, np.asarray(frame_orders, dtype=np.int64)
+
+    @staticmethod
+    def _extract_frame_order(name: str) -> int:
+        numbers = re.findall(r'(\d+)', name)
+        if not numbers:
+            return 0
+        return int(numbers[-1])
+
+    def _parse_sequence_from_name(self, name: str) -> Tuple[str, int]:
+        norm_name = name.replace('\\', '/')
+        parts = norm_name.split('/')
+
+        # HO3D style:
+        # - train/ABF10/rgb/0001.jpg
+        # - SM1/rgb/0000.png
+        if len(parts) >= 3 and parts[-2] == 'rgb':
+            seq_key = parts[-3]
+            return seq_key, self._extract_frame_order(parts[-1])
+
+        # InterHand style: images/train/Capture0/seq_name/camXXXX/frame.jpg
+        capture_idx = next((i for i, part in enumerate(parts) if part.startswith('Capture')), None)
+        if capture_idx is not None and capture_idx + 2 < len(parts):
+            capture = parts[capture_idx]
+            seq_name = parts[capture_idx + 1]
+            camera = parts[capture_idx + 2] if capture_idx + 2 < len(parts) else 'cam0'
+            return f"{capture}/{seq_name}/{camera}", self._extract_frame_order(parts[-1])
+
+        base_name = os.path.basename(norm_name)
+        stem, _ = os.path.splitext(base_name)
+
+        # HInt EPIC/newdays style with explicit frame index.
+        frame_match = re.match(r'(.+?)_frame_(\d+)_(l|r)$', stem)
+        if frame_match:
+            seq_root, frame_idx, side = frame_match.groups()
+            return f"{seq_root}_{side}", int(frame_idx)
+
+        # HInt event snapshots.
+        event_match = re.match(
+            r'(.+?)_(pre_45|pre_30|pre_15|pre_frame|contact_frame|pnr_frame|post_frame)_(l|r)$',
+            stem,
+        )
+        if event_match:
+            seq_root, phase_name, side = event_match.groups()
+            phase_order = {
+                'pre_45': -45,
+                'pre_30': -30,
+                'pre_15': -15,
+                'pre_frame': -1,
+                'contact_frame': 0,
+                'pnr_frame': 1,
+                'post_frame': 15,
+            }[phase_name]
+            return f"{seq_root}_{side}", phase_order
+
+        return 'seq_0', self._extract_frame_order(stem)
+
+    def _build_sensor_source(self) -> np.ndarray:
+        if self.history_mode == 'pose':
+            return np.zeros((len(self.center), 5), dtype=np.float32)
+
+        if self.sensor_mode == 'off':
+            return np.zeros((len(self.center), 5), dtype=np.float32)
+
+        if 'sensor' in self.data:
+            sensor = self.data['sensor'].astype(np.float32)
+            print(f"Loaded sensor data from NPZ: {sensor.shape}")
+            return sensor
+
+        if self.sensor_mode != 'pseudo':
+            return np.zeros((len(self.center), 5), dtype=np.float32)
+
+        print("Computing pseudo sensor from keypoints_3d...")
+        sensors = np.zeros((len(self.center), 5), dtype=np.float32)
+        valid_3d = self.keypoints_3d.shape[-1] >= 4
+        for idx in range(len(self.center)):
+            joints = self.keypoints_3d[idx, :, :3]
+            conf = self.keypoints_3d[idx, :, 3] if valid_3d else np.ones(21, dtype=np.float32)
+            if float(np.sum(conf > 0.5)) < 21:
+                continue
+            sensors[idx] = compute_pseudo_sensor_from_model_joints(
+                joints,
+                fist_ratio=self.sensor_fist_ratio,
+            )
+        return sensors
 
     def _compute_sequence_starts(self) -> np.ndarray:
         sequence_start = np.zeros(len(self.center), dtype=np.int64)
@@ -216,12 +303,17 @@ class TemporalImageDataset(ImageDataset):
         item['right'] = target_frame['right']
         item['personid'] = int(self.personid[target_idx])
         item['sequence_key'] = self.sequence_keys[target_idx]
+        item['frame_order'] = int(self.frame_orders[target_idx])
         item['temporal_indices'] = np.array(seq_idx, dtype=np.int64)
         item['sensor_valid_mask'] = sensor_valid_mask
         item['pose_valid_mask'] = pose_valid_mask
 
         # SEQUENCES
         item['sensor_seq'] = np.stack([self.sensor_data_source[idx] for idx in seq_idx]).astype(np.float32)
+        if self.history_mode == 'pose':
+            item['sensor_valid_mask'] = np.zeros_like(sensor_valid_mask, dtype=np.bool_)
+            item['sensor_seq'][...] = 0.0
+
         pose_seq = []
         for f in frames:
             p_hand = f['mano_params']['hand_pose']
@@ -234,8 +326,20 @@ class TemporalImageDataset(ImageDataset):
         item['pose_seq'] = np.stack(pose_seq) if not isinstance(pose_seq[0], torch.Tensor) else torch.stack(pose_seq)
         
         if self.train:
-            noise = np.random.normal(0, 0.02, size=item['pose_seq'].shape).astype(np.float32)
-            item['pose_seq'] = item['pose_seq'] + noise
+            noise = np.random.normal(0, self.pose_noise_std, size=item['pose_seq'].shape).astype(np.float32)
+            if isinstance(item['pose_seq'], torch.Tensor):
+                item['pose_seq'] = item['pose_seq'] + torch.from_numpy(noise).to(dtype=item['pose_seq'].dtype)
+            else:
+                item['pose_seq'] = item['pose_seq'] + noise
+            if self.history_mode != 'pose':
+                item['sensor_seq'] = apply_sensor_augmentations(
+                    item['sensor_seq'],
+                    item['sensor_valid_mask'],
+                    noise_std=self.sensor_noise_std,
+                    sensor_dropout=self.sensor_dropout,
+                    channel_dropout=self.sensor_channel_dropout,
+                    temporal_dropout=self.sensor_temporal_dropout,
+                )
 
         has_prev_step = bool(pose_valid_mask[-1]) if pose_valid_mask.size > 0 else False
         if self.seq_len > 1 and has_prev_step:

@@ -1,0 +1,46 @@
+# @package _global_
+
+defaults:
+  - hamer_vit_transformer.yaml
+
+exp_name: hamer_ho3d_pose_cam_shape_gtcoord
+
+# Even more conservative HO3D-v3 finetuning:
+# - keep the pretrained backbone fixed
+# - keep the shared MANO transformer fixed
+# - keep camera and shape heads fixed
+# - only adapt the pose readout layer (decpose)
+
+TRAIN:
+  LR: 1e-5
+  WEIGHT_DECAY: 1e-4
+  BATCH_SIZE: 64
+
+GENERAL:
+  LOG_STEPS: 500
+  CHECKPOINT_STEPS: 5000
+  CHECKPOINT_SAVE_TOP_K: -1
+
+LOSS_WEIGHTS:
+  # KEYPOINTS_3D: 0.05
+  # KEYPOINTS_2D: 0.01
+  # GLOBAL_ORIENT: 0.001
+  # HAND_POSE: 0.001
+  # BETAS: 0.0005
+  # ADVERSARIAL: 0.0005
+  ADVERSARIAL: 0.0
+
+epochs: 10
+log_every_n_steps: 10
+freeze_backbone: True
+freeze_mano_head: False
+freeze_mano_transformer: True
+freeze_camera_head: False
+freeze_shape_head: False
+run_validation: False
+num_sanity_val_steps: 0
+log_lr: False
+
+devices: [0,1]
+
+gt_coord_recipe: flip_gt_keypoints_3d_global_orient
