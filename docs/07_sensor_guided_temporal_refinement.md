@@ -135,7 +135,54 @@ AnyHand / WiLoR 暂时只作为未来更强 RGB backbone 候选，
 真实手套数据后续只需要转成同一套 `(T, 5)` 接口，
 即可复用 benchmark 模型和 demo pipeline。
 
-## 6. Benchmark 设计
+## 6. v2 训练和评测协议
+
+当前 v2 不再把“时序训练”理解成 dataloader 必须按视频顺序逐帧喂模型。
+新的最小协议是两阶段：
+
+1. 先离线缓存 base HaMeR 的逐帧预测。
+   - 入口：`scripts/cache_base_hamer_predictions.py`
+   - 输入：packed NPZ、图片目录、HaMeR checkpoint
+   - 输出：与 packed NPZ 完全对齐的 `base_pose / base_cam / sequence_key / frame_order`
+   - 约束：训练 cache 必须覆盖 NPZ 里的每一帧，不能默认跳过缺图，否则 temporal window 会错位。
+
+2. 再训练 image-free 的 `SensorTemporalRefiner`。
+   - 入口：`scripts/train_sensor_refiner.py`
+   - dataset：`hamer/datasets/sensor_refiner_dataset.py`
+   - 每个训练 sample 仍然是“目标帧”，因此 batch 可以 shuffle。
+   - 但 sample 内部自带 `(window_size, 48)` pose history 和 `(window_size, 5)` sensor history。
+   - sequence 开头用第一帧左 padding，同时用 `pose_valid_mask / sensor_valid_mask` 标出 padding 无效。
+
+这样做的好处是：
+
+- 训练阶段不需要每一步都在线跑 HaMeR，远程实验成本更低。
+- 可以先验证“sensor 是否能修正 finger articulation”，不被 RGB backbone 训练细节干扰。
+- 可以同时支持三种 history source：
+  - `base`：历史 pose 来自 HaMeR cache，更接近推理时分布
+  - `gt`：teacher forcing，适合 sanity check
+  - `mixed`：在 GT history 和 base history 之间随机混合，减少 exposure bias
+
+评测阶段要和训练区分开：
+
+- 默认可做 stateless eval：直接使用 cache 里的历史 pose window。
+- 正式 temporal 结论应使用 stateful eval：按 sequence 顺序逐帧跑，把上一帧 refined pose 回填给下一帧窗口。
+- 入口：`scripts/eval_sensor_refiner.py`
+- stateful eval 才能回答“前一帧预测会不会影响后一帧、是否真的减少跳变”。
+
+当前 v2 最小 loss 是：
+
+- `hand_pose` residual MSE：默认主 loss
+- optional `global_orient` MSE：只用于 ablation
+- optional smoothness：只约束最后两帧 history 和当前 refined pose 的加速度
+
+后续如果要把目标从 smoke protocol 推进到正式 benchmark，应继续补：
+
+- MANO FK 后的 3D joints / vertices loss
+- pseudo-sensor FK consistency loss
+- blackout / bbox jitter / frame dropout 的扰动生成
+- clean 与 stress-test 的固定评测表格
+
+## 7. Benchmark 设计
 
 第一阶段先用 HO3D-v3 跑通 protocol。
 
@@ -162,7 +209,7 @@ AnyHand / WiLoR 暂时只作为未来更强 RGB backbone 候选，
 而应重点看遮挡 / blackout / jitter 场景下 sensor-guided refiner
 是否稳定优于 `HaMeR + EMA` 和 `pose-only refiner`。
 
-## 7. 下一步
+## 8. 下一步
 
 近期优先级：
 

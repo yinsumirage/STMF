@@ -37,6 +37,7 @@ def test_sensor_temporal_refiner_optional_global_and_camera_ablation_heads_are_i
         num_layers=1,
         predict_global_orient=True,
         predict_cam=True,
+        image_feature_dim=16,
     )
     base_pose = torch.randn(3, 48)
     base_cam = torch.randn(3, 3)

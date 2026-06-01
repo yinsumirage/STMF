@@ -39,6 +39,7 @@ class SensorTemporalRefiner(nn.Module):
         num_layers: int = 2,
         predict_global_orient: bool = False,
         predict_cam: bool = False,
+        image_feature_dim: Optional[int] = None,
     ) -> None:
         super().__init__()
         if pose_dim < 4:
@@ -52,6 +53,7 @@ class SensorTemporalRefiner(nn.Module):
         self.hidden_dim = int(hidden_dim)
         self.predict_global_orient = bool(predict_global_orient)
         self.predict_cam = bool(predict_cam)
+        self.image_feature_dim = image_feature_dim
 
         self.pose_encoder = nn.Sequential(
             nn.Linear(self.pose_dim, self.hidden_dim),
@@ -68,11 +70,13 @@ class SensorTemporalRefiner(nn.Module):
             nn.GELU(),
             nn.LayerNorm(self.hidden_dim),
         )
-        self.image_encoder = nn.Sequential(
-            nn.LazyLinear(self.hidden_dim),
-            nn.GELU(),
-            nn.LayerNorm(self.hidden_dim),
-        )
+        self.image_encoder = None
+        if image_feature_dim is not None:
+            self.image_encoder = nn.Sequential(
+                nn.Linear(int(image_feature_dim), self.hidden_dim),
+                nn.GELU(),
+                nn.LayerNorm(self.hidden_dim),
+            )
 
         self.temporal_encoder = nn.GRU(
             input_size=self.hidden_dim * 2,
@@ -133,6 +137,8 @@ class SensorTemporalRefiner(nn.Module):
         temporal_summary = self._masked_mean(encoded, valid_mask)
         base_summary = self.base_pose_encoder(base_pose)
         if image_feature is not None:
+            if self.image_encoder is None:
+                raise ValueError("image_feature was provided, but image_feature_dim was not set at construction")
             base_summary = base_summary + self.image_encoder(image_feature)
 
         fused = self.fusion(torch.cat([temporal_summary, base_summary], dim=-1))

@@ -50,7 +50,36 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
 
 ### 2. 已完成的主要改动
 
-#### 2.1 STMF 模型和评测链路
+#### 2.1 SensorTemporalRefiner v2 缓存训练协议
+
+已经新增一条更收窄的 v2 训练/评测入口，用来回答“sensor 是否能在时序和视觉歧义下稳定 finger articulation”：
+
+- `hamer/models/components/sensor_temporal_refiner.py`
+  - `SensorTemporalRefiner` 默认只预测 `hand_pose` residual。
+  - `global_orient` 和 `camera` 默认不改，只保留 ablation 开关。
+- `scripts/cache_base_hamer_predictions.py`
+  - 离线缓存 base HaMeR 每帧预测。
+  - 输出必须和 packed GT NPZ 完全等长、同顺序。
+  - 默认不跳过缺图，避免训练 cache 和 GT NPZ 错位。
+- `hamer/datasets/sensor_refiner_dataset.py`
+  - 从 packed GT NPZ + base cache 构造时序窗口。
+  - 每个 sample 是一个目标帧，但内部自带历史 pose window 和 sensor window，因此训练 batch 可以 shuffle。
+  - sequence 开头用第一帧左 padding，并用 `pose_valid_mask / sensor_valid_mask` 标记无效历史。
+- `scripts/train_sensor_refiner.py`
+  - 训练 image-free refiner，不在线跑 RGB backbone。
+  - 支持 `history_source={base,gt,mixed}`。
+- `scripts/eval_sensor_refiner.py`
+  - 支持 stateless eval 和 `--stateful` autoregressive eval。
+  - 正式 temporal 结论优先看 `--stateful`，因为它会把上一帧 refined pose 回填给下一帧窗口。
+
+当前这个 v2 入口是最小协议，不等于完整 benchmark。后续还需要接入：
+
+- MANO FK 后的 3D joints / vertices loss
+- pseudo-sensor FK consistency loss
+- blackout / bbox jitter / frame dropout 扰动
+- `eval_temporal_metrics.py` 的统一 temporal 指标表
+
+#### 2.2 STMF 模型和评测链路
 
 已经完成：
 
@@ -67,7 +96,7 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
   - 已支持 stateful / autoregressive 推理
   - 会把上一帧预测 pose 回填给下一帧
 
-#### 2.2 Dataset 和时序逻辑
+#### 2.3 Dataset 和时序逻辑
 
 已经完成：
 
@@ -82,7 +111,7 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
   - 图片扩展名 `.png/.jpg/.jpeg` 自动兼容
   - 缺失图片在评测阶段自动跳过，不再整次崩溃
 
-#### 2.3 训练链路
+#### 2.4 训练链路
 
 已经完成：
 
@@ -94,7 +123,7 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
   - 默认关闭无意义的 validation/test/lr logging
   - checkpoint 改成按 step 保存并保留 `last.ckpt`
 
-#### 2.4 HO3D 数据预处理
+#### 2.5 HO3D 数据预处理
 
 已经完成：
 

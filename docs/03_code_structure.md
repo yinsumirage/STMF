@@ -263,7 +263,45 @@
 
 优先看这个文件。
 
-### 3.6 HInt phase 评测入口
+### 3.6 SensorTemporalRefiner v2 缓存训练入口
+
+相关文件：
+- `scripts/cache_base_hamer_predictions.py`
+- `scripts/train_sensor_refiner.py`
+- `scripts/eval_sensor_refiner.py`
+- `hamer/datasets/sensor_refiner_dataset.py`
+- `hamer/models/components/sensor_temporal_refiner.py`
+
+定位：
+- 这是当前新主线的 v2 最小训练协议。
+- 它不在线训练 HaMeR backbone，而是先把 HaMeR 逐帧预测缓存为 frame-aligned NPZ。
+- 然后用缓存的 `base_pose / base_cam`、历史 pose window 和 sensor window 训练 `SensorTemporalRefiner`。
+
+关键约束：
+- base cache 必须和 packed GT NPZ 完全等长、同顺序。
+- `scripts/cache_base_hamer_predictions.py` 默认不会跳过缺图；如果缺图，应先修数据或重新打包 NPZ。
+- `SensorRefinerDataset` 会检查 cache 里的 `imgname` 是否和 GT NPZ 对齐。
+- 训练 sample 可以 shuffle，因为每个 sample 内部已经带了自己的局部历史窗口。
+- sequence 开头使用第一帧左 padding，并用 `pose_valid_mask / sensor_valid_mask` 标记 padding 无效。
+
+训练入口：
+- `scripts/train_sensor_refiner.py`
+  - 默认只训练 `hand_pose` residual。
+  - `global_orient` 和 `camera` 默认不改。
+  - `--history_source base` 更接近真实推理分布。
+  - `--history_source gt` 适合 sanity check。
+  - `--history_source mixed` 用于减少 teacher-forcing 和推理分布的差距。
+
+评测入口：
+- `scripts/eval_sensor_refiner.py`
+  - 默认 stateless：使用 cache/dataset 里构造好的历史窗口。
+  - `--stateful`：按 sequence 顺序逐帧回填上一帧 refined pose，才是正式 temporal 评测应优先看的模式。
+
+当前这个入口还不是完整 benchmark：
+- 已经能验证 cache/window/stateful 协议是否跑通。
+- 后续还需要接 MANO FK loss、pseudo-sensor consistency、blackout/bbox jitter 扰动和统一 temporal metrics。
+
+### 3.7 HInt phase 评测入口
 
 文件：
 
@@ -293,7 +331,7 @@
 - 本地默认从 `_DATA/HInt_annotation_partial/...` 读取 HInt 图像，不再依赖旧机器上的绝对路径
 - 如果某个 split 被 missing-image filter 清到 0，脚本会自动跳过而不是直接报错
 
-### 3.7 原始 HaMeR 评测入口
+### 3.8 原始 HaMeR 评测入口
 
 文件：
 
@@ -305,7 +343,7 @@
 
 现在主要用于做对照，确认 `eval_stmf.py --base_hamer` 是否和原版一致。
 
-### 3.6 Demo 入口
+### 3.9 Demo 入口
 
 文件：
 
