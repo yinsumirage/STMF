@@ -9,11 +9,12 @@
 
 1. `docs/01_current_status.md`
 2. `docs/07_sensor_guided_temporal_refinement.md`
-3. `docs/06_stmf_v1_report_protocol.md`
-4. `docs/04_ho3d_camera_intrinsics_note.md`
-5. `docs/05_hamer_hand_recovery_research_brief.md`
-6. `docs/02_stmf_design.md`
-7. 本文件
+3. `docs/08_sensor_guided_temporal_research_plan.md`
+4. `docs/06_stmf_v1_report_protocol.md`
+5. `docs/04_ho3d_camera_intrinsics_note.md`
+6. `docs/05_hamer_hand_recovery_research_brief.md`
+7. `docs/02_stmf_design.md`
+8. 本文件
 
 如果只是为了继续开发，不建议先读 `docs/archive/` 里的旧文档，因为里面大多是早期草稿或已经过时的设计。
 
@@ -22,6 +23,9 @@
 - `docs/07_sensor_guided_temporal_refinement.md`
   - 当前新的主线文档
   - 重点是 sensor-guided temporal MANO refinement 的问题定义、baseline、数据接口和 v2 refiner 边界
+- `docs/08_sensor_guided_temporal_research_plan.md`
+  - 当前长期研究愿景
+  - 重点是外部 benchmark 顺序、pseudo-sensor 合法性、真实手套数据定位和对老师的汇报口径
 - `docs/04_ho3d_camera_intrinsics_note.md`
   - 专门记录 plain HaMeR 在 HO3D hard case 上暴露出来的 patch 相机近似问题
   - 以及为什么“自由预测内参”虽然可能有帮助，但在无真实相机监督的大规模数据上又很容易语义塌陷

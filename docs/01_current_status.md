@@ -11,11 +11,12 @@ HO3D camera / patchK / overfit 线保留为协议分析和 negative result，
 
 1. 先读本文件，了解当前状态和推荐命令
 2. 再读 `07_sensor_guided_temporal_refinement.md`，了解新的 sensor-guided 主线
-3. 如果是准备给老师汇报 STMF v1，再读 `06_stmf_v1_report_protocol.md`
-4. 最后读 `03_code_structure.md`，按代码结构定位具体文件
-5. 如果正在排查 HO3D hard case 的 camera / patch 投影问题，补读 `04_ho3d_camera_intrinsics_note.md`
-6. 如果要把当前结论带出去做论文/方法调研，再读 `05_hamer_hand_recovery_research_brief.md`
-7. 如需了解早期 STMF 设计背景，再读 `02_stmf_design.md`
+3. 再读 `08_sensor_guided_temporal_research_plan.md`，了解长期研究愿景和 benchmark 路线
+4. 如果是准备给老师汇报 STMF v1，再读 `06_stmf_v1_report_protocol.md`
+5. 最后读 `03_code_structure.md`，按代码结构定位具体文件
+6. 如果正在排查 HO3D hard case 的 camera / patch 投影问题，补读 `04_ho3d_camera_intrinsics_note.md`
+7. 如果要把当前结论带出去做论文/方法调研，再读 `05_hamer_hand_recovery_research_brief.md`
+8. 如需了解早期 STMF 设计背景，再读 `02_stmf_design.md`
 
 历史草稿和已经过时的文档已移到 `docs/archive/`。
 
