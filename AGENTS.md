@@ -29,12 +29,14 @@
 3. `docs/08_sensor_guided_temporal_research_plan.md`
 4. `docs/03_code_structure.md`
 5. `docs/06_stmf_v1_report_protocol.md`
+6. `docs/09_remote_workflow.md`
 
 按任务补读：
 
 - 排查 HO3D camera / patch / projection hard case：读 `docs/04_ho3d_camera_intrinsics_note.md`
 - 需要带出去做方法调研或论文口径：读 `docs/05_hamer_hand_recovery_research_brief.md`
 - 理解早期 STMF v1 设计：读 `docs/02_stmf_design.md`
+- 准备远程跑实验、同步远程仓库或处理远程路径差异：读 `docs/09_remote_workflow.md`
 - 旧草稿和已过时方案在 `docs/archive/`，默认不要先读 archive。
 
 ## 3. 当前关键入口
@@ -221,6 +223,8 @@ HO3D 很容易反复踩协议问题。凡是涉及 HO3D 数据、训练监督、
 - 远程数据目录：`/data/hand_data`
 - HO3D 数据目录：`/data/hand_data/HO-3D_v3`
 - GPU：双 NVIDIA GeForce RTX 4090
+
+远程数据路径和本地 WSL 不一定一致。不要把只涉及 `/data/hand_data/...`、checkpoint、日志目录的 config 差异误判成模型/协议差异；远程同步和路径差异细节见 `docs/09_remote_workflow.md`。
 
 远程执行项目命令时默认使用：
 

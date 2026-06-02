@@ -14,7 +14,8 @@
 5. `docs/04_ho3d_camera_intrinsics_note.md`
 6. `docs/05_hamer_hand_recovery_research_brief.md`
 7. `docs/02_stmf_design.md`
-8. 本文件
+8. `docs/09_remote_workflow.md`
+9. 本文件
 
 如果只是为了继续开发，不建议先读 `docs/archive/` 里的旧文档，因为里面大多是早期草稿或已经过时的设计。
 
@@ -32,6 +33,9 @@
 - `docs/05_hamer_hand_recovery_research_brief.md`
   - 更适合带出去做 deep research 的摘要版
   - 重点是当前强证据、开放问题、以及跨数据集/相机协议研究方向
+- `docs/09_remote_workflow.md`
+  - 专门记录远程双 4090 机器的数据路径、同步规则、tmux 训练方式和远程旧工作区备份记录
+  - 准备远程跑实验或处理本地/远程 config 路径差异时先读
 
 ## 2. 顶层结构
 

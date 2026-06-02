@@ -17,6 +17,7 @@ HO3D camera / patchK / overfit 线保留为协议分析和 negative result，
 6. 如果正在排查 HO3D hard case 的 camera / patch 投影问题，补读 `04_ho3d_camera_intrinsics_note.md`
 7. 如果要把当前结论带出去做论文/方法调研，再读 `05_hamer_hand_recovery_research_brief.md`
 8. 如需了解早期 STMF 设计背景，再读 `02_stmf_design.md`
+9. 如果要远程跑实验、同步远程仓库或处理本地/远程路径差异，读 `09_remote_workflow.md`
 
 历史草稿和已经过时的文档已移到 `docs/archive/`。
 
