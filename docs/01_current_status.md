@@ -62,6 +62,8 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
   - 离线缓存 base HaMeR 每帧预测。
   - 输出必须和 packed GT NPZ 完全等长、同顺序。
   - 默认不跳过缺图，避免训练 cache 和 GT NPZ 错位。
+  - 默认 `--split train`，不会套 HO3D official evaluation whitelist；远程 smoke 曾暴露硬编码 evaluation split 会把 train 子集过滤成 0 帧。
+  - 如果后续要生成官方 evaluation 子集预测，再显式传 `--split evaluation`。
 - `hamer/datasets/sensor_refiner_dataset.py`
   - 从 packed GT NPZ + base cache 构造时序窗口。
   - 每个 sample 是一个目标帧，但内部自带历史 pose window 和 sensor window，因此训练 batch 可以 shuffle。
@@ -79,6 +81,12 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
 - pseudo-sensor FK consistency loss
 - blackout / bbox jitter / frame dropout 扰动
 - `eval_temporal_metrics.py` 的统一 temporal 指标表
+
+2026-06-03 远程 smoke 结果：
+
+- 在 `dual4090` 上用 HO3D train 前 128 帧跑通了 `cache -> train_sensor_refiner 3 step -> eval_sensor_refiner --stateful`。
+- 输出 `refined_pose (128, 48)`、`delta_hand_pose (128, 45)`，`stateful=True`。
+- 这只证明真实远程链路可运行，不作为正式指标；详细记录见 `docs/09_remote_workflow.md`。
 
 #### 2.2 STMF 模型和评测链路
 

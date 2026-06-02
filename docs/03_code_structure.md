@@ -284,6 +284,8 @@
 关键约束：
 - base cache 必须和 packed GT NPZ 完全等长、同顺序。
 - `scripts/cache_base_hamer_predictions.py` 默认不会跳过缺图；如果缺图，应先修数据或重新打包 NPZ。
+- `scripts/cache_base_hamer_predictions.py` 默认 `--split train`，不会套 HO3D official evaluation whitelist。
+- 只有为 evaluation protocol 生成官方子集预测时，才使用 `--split evaluation`。
 - `SensorRefinerDataset` 会检查 cache 里的 `imgname` 是否和 GT NPZ 对齐。
 - 训练 sample 可以 shuffle，因为每个 sample 内部已经带了自己的局部历史窗口。
 - sequence 开头使用第一帧左 padding，并用 `pose_valid_mask / sensor_valid_mask` 标记 padding 无效。

@@ -19,6 +19,7 @@ python scripts/cache_base_hamer_predictions.py \
   --dataset_file /data/hand_data/HO-3D_v3/ho3d_train.npz \
   --img_dir /data/hand_data/HO-3D_v3 \
   --output_file /data/hand_data/HO-3D_v3/ho3d_train_hamer_base_cache.npz \
+  --split train \
   --batch_size 64
 """
 
@@ -58,6 +59,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--rescale_factor", type=float, default=2.0)
+    parser.add_argument(
+        "--split",
+        type=str,
+        choices=["train", "evaluation"],
+        default="train",
+        help="Use train for frame-aligned training caches; evaluation applies HO3D official subset filtering.",
+    )
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument(
         "--skip_missing_images",
@@ -86,7 +94,7 @@ def main() -> None:
         model_cfg,
         args.dataset_file,
         args.img_dir,
-        train=False,
+        train=args.split == "train",
         rescale_factor=args.rescale_factor,
         skip_missing_images=args.skip_missing_images,
     )

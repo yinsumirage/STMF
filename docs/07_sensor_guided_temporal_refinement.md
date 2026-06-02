@@ -145,6 +145,8 @@ AnyHand / WiLoR 暂时只作为未来更强 RGB backbone 候选，
    - 输入：packed NPZ、图片目录、HaMeR checkpoint
    - 输出：与 packed NPZ 完全对齐的 `base_pose / base_cam / sequence_key / frame_order`
    - 约束：训练 cache 必须覆盖 NPZ 里的每一帧，不能默认跳过缺图，否则 temporal window 会错位。
+   - 训练 split 默认使用 `--split train`，避免 HO3D official evaluation whitelist 把 train frames 过滤掉。
+   - 只有给官方 evaluation scorer 准备预测时，才显式使用 `--split evaluation`。
 
 2. 再训练 image-free 的 `SensorTemporalRefiner`。
    - 入口：`scripts/train_sensor_refiner.py`

@@ -124,3 +124,44 @@ python <entrypoint> <args> 2>&1 | tee logs_remote/<run_name>.log
 - dataloader 没卡住
 - loss 不是 NaN
 - checkpoint / log 目录符合预期
+
+## 6. 2026-06-03 STMF-v2 remote smoke
+
+目的：
+
+- 验证远程 `dual4090` 上新的 cached sensor refiner 链路是否能跑通真实 HO3D 图片和 HaMeR checkpoint。
+- 只做小规模 protocol smoke，不作为正式指标。
+
+环境：
+
+- 远程 HEAD：`497a431`
+- GPU：使用 `CUDA_VISIBLE_DEVICES=1`
+- checkpoint：`/home/user/code/STMF/_DATA/hamer_ckpts/checkpoints/hamer.ckpt`
+- 输入子集：`/data/hand_data/HO-3D_v3/stmf_v2_debug/ho3d_train_128.npz`
+- base cache：`/data/hand_data/HO-3D_v3/stmf_v2_debug/ho3d_train_128_hamer_base_cache.npz`
+- train log/checkpoint：`/home/user/code/STMF/logs_remote/stmf_v2_smoke_20260603`
+- eval output：`/home/user/code/STMF/results/sensor_refiner/debug/stmf_v2_smoke_20260603_stateful.npz`
+- success summary：`/home/user/code/STMF/logs_remote/stmf_v2_smoke_20260603_success.txt`
+- note：`logs_remote/stmf_v2_smoke_20260603.log` 保留了第一次引号污染导致失败的日志，不作为成功 smoke 的依据。
+
+结果：
+
+- HO3D train 前 128 帧子集创建成功：`train/ABF10/rgb/0000.jpg` 到 `train/ABF10/rgb/0127.jpg`。
+- HaMeR base cache 成功写出，8 个 batch，shape 与 128 帧子集对齐。
+- `train_sensor_refiner.py` 跑通 3 step，`loss_hand_pose` 约从 `0.00303` 降到 `0.00187`。
+- `eval_sensor_refiner.py --stateful` 跑通 128 帧，输出：
+  - `refined_pose`: `(128, 48)`
+  - `delta_hand_pose`: `(128, 45)`
+  - `stateful`: `True`
+  - `delta_abs_mean`: `0.030069`
+
+暴露并修复的问题：
+
+- `scripts/cache_base_hamer_predictions.py` 曾硬编码 `ImageDataset(train=False)`。
+- 对 HO3D train 子集运行时会错误套用 official evaluation whitelist，导致 `keeping 0/128`。
+- 现在 cache 脚本新增 `--split {train,evaluation}`，默认 `train`；只有 official evaluation 子集才显式使用 `--split evaluation`。
+
+结论：
+
+- 远程 CUDA、真实图片读取、HaMeR forward、frame-aligned cache、shuffleable v2 training、stateful eval 这条最小链路已经打通。
+- 下一步可以把规模扩大到单个 HO3D sequence 或几千帧，并接入 temporal metrics / blackout stress，而不是继续做代码级 smoke。
