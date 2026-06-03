@@ -9,6 +9,8 @@ Important conventions:
 - NPZ `center` / `scale` follow the HaMeR format.
 - `scale` is expected to be bbox width/height in pixels before dividing by 200.
 - At evaluation time this loader now tolerates `.png/.jpg/.jpeg` mismatches and can skip missing images.
+- HO3D official evaluation subset filtering is controlled separately from
+  train/eval augmentation through `apply_ho3d_eval_subset`.
 """
 
 import copy
@@ -83,6 +85,7 @@ class ImageDataset(Dataset):
         self.train = train
         self.cfg = cfg
         self.skip_missing_images = kwargs.get('skip_missing_images', not train)
+        self.apply_ho3d_eval_subset = kwargs.get('apply_ho3d_eval_subset', not train)
 
         self.img_size = cfg.MODEL.IMAGE_SIZE
         self.mean = 255. * np.array(self.cfg.MODEL.IMAGE_MEAN)
@@ -154,7 +157,7 @@ class ImageDataset(Dataset):
         For HO3D evaluation-style NPZ files, keep only frames listed in the official
         evaluation.txt whitelist so the prediction count matches the public scorer.
         """
-        if self.train:
+        if not self.apply_ho3d_eval_subset:
             return
 
         dataset_file_l = str(dataset_file).lower()

@@ -71,16 +71,20 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
 - `scripts/train_sensor_refiner.py`
   - 训练 image-free refiner，不在线跑 RGB backbone。
   - 支持 `history_source={base,gt,mixed}`。
+  - 支持 `sensor_mode={sensor,zero}`，分别对应 sensor-guided refiner 和 temporal pose-only refiner。
 - `scripts/eval_sensor_refiner.py`
   - 支持 stateless eval 和 `--stateful` autoregressive eval。
   - 正式 temporal 结论优先看 `--stateful`，因为它会把上一帧 refined pose 回填给下一帧窗口。
+  - 支持 cached stress：`--blackout_len`、`--base_pose_noise_std`、`--sensor_dropout`。
+- `scripts/eval_sensor_refiner_metrics.py`
+  - 读取 refiner NPZ 输出，用 MANO layer 计算 base/refined 的 3D/temporal 指标。
+  - 当前输出 `PA-MPJPE / PA-MPVPE / MPJVE / MPJAE / PredJitter / Stress_PA-MPJPE`。
 
 当前这个 v2 入口是最小协议，不等于完整 benchmark。后续还需要接入：
 
-- MANO FK 后的 3D joints / vertices loss
 - pseudo-sensor FK consistency loss
-- blackout / bbox jitter / frame dropout 扰动
-- `eval_temporal_metrics.py` 的统一 temporal 指标表
+- 更完整的 bbox jitter / frame dropout 扰动
+- clean / blackout / sensor dropout 的统一汇总表
 
 2026-06-03 远程 smoke 结果：
 

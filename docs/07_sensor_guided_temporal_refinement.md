@@ -177,11 +177,33 @@ AnyHand / WiLoR 暂时只作为未来更强 RGB backbone 候选，
 - optional `global_orient` MSE：只用于 ablation
 - optional smoothness：只约束最后两帧 history 和当前 refined pose 的加速度
 
+当前固定两个 v2 refiner baseline：
+
+- `--sensor_mode sensor`：sensor-guided refiner，使用 `(T, 5)` sensor window。
+- `--sensor_mode zero`：temporal pose-only refiner，同结构但 sensor 输入全零。
+
+这样能在同一 base cache、同一 history window、同一 stateful eval 协议下隔离“sensor 是否提供额外收益”。
+
+当前 cached stress-test 入口：
+
+- `scripts/eval_sensor_refiner.py --blackout_len 1/3 --blackout_strategy hold`
+  - 模拟连续视觉失败帧：当前帧 base pose 使用上一帧 clean base pose hold 住。
+  - sensor window 仍然来自当前序列，因此可以检查 sensor 是否帮助 finger articulation recovery。
+- `--base_pose_noise_std`
+  - 模拟 base RGB pose 抖动。
+- `--sensor_dropout`
+  - 模拟拉线信号缺失，用于 sensor robustness ablation。
+
+当前 cached metrics 入口：
+
+- `scripts/eval_sensor_refiner_metrics.py`
+  - 读取 `eval_sensor_refiner.py` 输出的 NPZ。
+  - 用 HaMeR 的 MANO layer 从 `base_pose / refined_pose / GT pose` 生成 joints / vertices。
+  - 输出 base/refined 的 `PA-MPJPE / PA-MPVPE / MPJVE / MPJAE / PredJitter / Stress_PA-MPJPE`。
+
 后续如果要把目标从 smoke protocol 推进到正式 benchmark，应继续补：
 
-- MANO FK 后的 3D joints / vertices loss
 - pseudo-sensor FK consistency loss
-- blackout / bbox jitter / frame dropout 的扰动生成
 - clean 与 stress-test 的固定评测表格
 
 ## 7. Benchmark 设计

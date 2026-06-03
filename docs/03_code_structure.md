@@ -273,6 +273,7 @@
 - `scripts/cache_base_hamer_predictions.py`
 - `scripts/train_sensor_refiner.py`
 - `scripts/eval_sensor_refiner.py`
+- `scripts/eval_sensor_refiner_metrics.py`
 - `hamer/datasets/sensor_refiner_dataset.py`
 - `hamer/models/components/sensor_temporal_refiner.py`
 
@@ -284,6 +285,7 @@
 关键约束：
 - base cache 必须和 packed GT NPZ 完全等长、同顺序。
 - `scripts/cache_base_hamer_predictions.py` 默认不会跳过缺图；如果缺图，应先修数据或重新打包 NPZ。
+- `scripts/cache_base_hamer_predictions.py` 始终使用 `train=False` 跑无增强 cache。
 - `scripts/cache_base_hamer_predictions.py` 默认 `--split train`，不会套 HO3D official evaluation whitelist。
 - 只有为 evaluation protocol 生成官方子集预测时，才使用 `--split evaluation`。
 - `SensorRefinerDataset` 会检查 cache 里的 `imgname` 是否和 GT NPZ 对齐。
@@ -297,15 +299,24 @@
   - `--history_source base` 更接近真实推理分布。
   - `--history_source gt` 适合 sanity check。
   - `--history_source mixed` 用于减少 teacher-forcing 和推理分布的差距。
+  - `--sensor_mode sensor` 是 sensor-guided refiner。
+  - `--sensor_mode zero` 是 temporal pose-only refiner。
 
 评测入口：
 - `scripts/eval_sensor_refiner.py`
   - 默认 stateless：使用 cache/dataset 里构造好的历史窗口。
   - `--stateful`：按 sequence 顺序逐帧回填上一帧 refined pose，才是正式 temporal 评测应优先看的模式。
+  - `--blackout_len 1/3 --blackout_strategy hold`：模拟连续视觉失败帧。
+  - `--base_pose_noise_std`：模拟 base RGB pose 抖动。
+  - `--sensor_dropout`：模拟 sensor 缺失。
+- `scripts/eval_sensor_refiner_metrics.py`
+  - 读取 refiner NPZ 输出。
+  - 用 MANO layer 计算 `base/refined` 的 joints / vertices。
+  - 输出 `PA-MPJPE / PA-MPVPE / MPJVE / MPJAE / PredJitter / Stress_PA-MPJPE`。
 
 当前这个入口还不是完整 benchmark：
 - 已经能验证 cache/window/stateful 协议是否跑通。
-- 后续还需要接 MANO FK loss、pseudo-sensor consistency、blackout/bbox jitter 扰动和统一 temporal metrics。
+- 后续还需要接 MANO FK loss、pseudo-sensor consistency 和更完整的 bbox jitter / frame dropout 扰动。
 
 ### 3.7 HInt phase 评测入口
 

@@ -13,6 +13,7 @@ python scripts/train_sensor_refiner.py \
   --base_pred_file /data/hand_data/HO-3D_v3/ho3d_train_hamer_base_cache.npz \
   --output_dir logs/sensor_refiner/ho3d_v3 \
   --history_source base \
+  --sensor_mode sensor \
   --window_size 5
 """
 
@@ -48,6 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_dir", type=str, required=True)
     parser.add_argument("--window_size", type=int, default=5)
     parser.add_argument("--history_source", type=str, choices=["base", "gt", "mixed"], default="base")
+    parser.add_argument("--sensor_mode", type=str, choices=["sensor", "zero"], default="sensor")
     parser.add_argument("--mixed_gt_prob", type=float, default=0.5)
     parser.add_argument("--hidden_dim", type=int, default=256)
     parser.add_argument("--num_layers", type=int, default=2)
@@ -157,10 +159,13 @@ def main() -> None:
         progress = tqdm(dataloader, desc=f"epoch {epoch + 1}/{args.epochs}")
         for batch in progress:
             batch = recursive_to_device(batch, device)
+            sensor_window = batch["sensor_window"]
+            if args.sensor_mode == "zero":
+                sensor_window = torch.zeros_like(sensor_window)
             output = model(
                 base_pose=batch["base_pose"],
                 pose_window=batch["pose_window"],
-                sensor_window=batch["sensor_window"],
+                sensor_window=sensor_window,
                 pose_valid_mask=batch["pose_valid_mask"],
                 sensor_valid_mask=batch["sensor_valid_mask"],
                 base_cam=batch.get("base_cam"),

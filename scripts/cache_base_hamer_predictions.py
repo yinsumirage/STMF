@@ -94,9 +94,10 @@ def main() -> None:
         model_cfg,
         args.dataset_file,
         args.img_dir,
-        train=args.split == "train",
+        train=False,
         rescale_factor=args.rescale_factor,
         skip_missing_images=args.skip_missing_images,
+        apply_ho3d_eval_subset=args.split == "evaluation",
     )
     packed_npz = np.load(args.dataset_file, allow_pickle=True)
     packed_len = len(packed_npz["imgname"])
