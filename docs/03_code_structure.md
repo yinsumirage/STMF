@@ -274,6 +274,7 @@
 - `scripts/train_sensor_refiner.py`
 - `scripts/eval_sensor_refiner.py`
 - `scripts/eval_sensor_refiner_metrics.py`
+- `scripts/run_stmf_v2_full_ho3d.sh`
 - `hamer/datasets/sensor_refiner_dataset.py`
 - `hamer/models/components/sensor_temporal_refiner.py`
 
@@ -313,6 +314,11 @@
   - 读取 refiner NPZ 输出。
   - 用 MANO layer 计算 `base/refined` 的 joints / vertices。
   - 输出 `PA-MPJPE / PA-MPVPE / MPJVE / MPJAE / PredJitter / Stress_PA-MPJPE`。
+- `scripts/run_stmf_v2_full_ho3d.sh`
+  - 远程全量 HO3D-v3 pipeline。
+  - 生成/复用 train/eval base cache。
+  - 训练 pose-only 和 sensor-guided 两个 refiner。
+  - 导出 clean / blackout-1 / blackout-3，并汇总 metrics。
 
 当前这个入口还不是完整 benchmark：
 - 已经能验证 cache/window/stateful 协议是否跑通。

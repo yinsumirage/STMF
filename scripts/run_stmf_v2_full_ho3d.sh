@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Full cached STMF-v2 HO3D pipeline for the dual4090 remote machine.
+#
+# Typical usage on the remote host:
+#
+#   cd /home/user/code/STMF
+#   . /home/user/miniconda3/etc/profile.d/conda.sh
+#   conda activate STMF
+#   CUDA_VISIBLE_DEVICES=1 bash scripts/run_stmf_v2_full_ho3d.sh
+#
+# This script intentionally keeps all data/log/result paths explicit so local
+# WSL path differences do not leak into remote experiments.
+
+RUN_DATE="${RUN_DATE:-20260603}"
+DATA_ROOT="${DATA_ROOT:-/data/hand_data/HO-3D_v3}"
+CHECKPOINT="${CHECKPOINT:-./_DATA/hamer_ckpts/checkpoints/hamer.ckpt}"
+TRAIN_NPZ="${TRAIN_NPZ:-${DATA_ROOT}/ho3d_train.npz}"
+EVAL_NPZ="${EVAL_NPZ:-${DATA_ROOT}/ho3d_evaluation.npz}"
+TRAIN_CACHE="${TRAIN_CACHE:-${DATA_ROOT}/ho3d_train_hamer_base_cache.npz}"
+EVAL_CACHE="${EVAL_CACHE:-${DATA_ROOT}/ho3d_evaluation_hamer_base_cache.npz}"
+RESULT_ROOT="${RESULT_ROOT:-results/sensor_refiner/ho3d_v3_${RUN_DATE}}"
+LOG_ROOT="${LOG_ROOT:-logs_remote/ho3d_v3_${RUN_DATE}}"
+
+BATCH_CACHE="${BATCH_CACHE:-128}"
+BATCH_TRAIN="${BATCH_TRAIN:-1024}"
+BATCH_METRICS="${BATCH_METRICS:-512}"
+EPOCHS="${EPOCHS:-20}"
+WINDOW_SIZE="${WINDOW_SIZE:-5}"
+NUM_WORKERS_CACHE="${NUM_WORKERS_CACHE:-8}"
+NUM_WORKERS_TRAIN="${NUM_WORKERS_TRAIN:-4}"
+
+mkdir -p "${RESULT_ROOT}" "${LOG_ROOT}"
+
+echo "RUN_DATE=${RUN_DATE}"
+echo "HEAD=$(git rev-parse --short HEAD)"
+echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
+
+if [[ ! -f "${TRAIN_CACHE}" ]]; then
+  python scripts/cache_base_hamer_predictions.py \
+    --checkpoint "${CHECKPOINT}" \
+    --dataset_file "${TRAIN_NPZ}" \
+    --img_dir "${DATA_ROOT}" \
+    --output_file "${TRAIN_CACHE}" \
+    --split train \
+    --batch_size "${BATCH_CACHE}" \
+    --num_workers "${NUM_WORKERS_CACHE}" \
+    2>&1 | tee "${LOG_ROOT}/cache_train.log"
+else
+  echo "Skip existing train cache: ${TRAIN_CACHE}"
+fi
+
+if [[ ! -f "${EVAL_CACHE}" ]]; then
+  python scripts/cache_base_hamer_predictions.py \
+    --checkpoint "${CHECKPOINT}" \
+    --dataset_file "${EVAL_NPZ}" \
+    --img_dir "${DATA_ROOT}" \
+    --output_file "${EVAL_CACHE}" \
+    --split train \
+    --batch_size "${BATCH_CACHE}" \
+    --num_workers "${NUM_WORKERS_CACHE}" \
+    2>&1 | tee "${LOG_ROOT}/cache_eval.log"
+else
+  echo "Skip existing eval cache: ${EVAL_CACHE}"
+fi
+
+train_refiner() {
+  local mode="$1"
+  local output_dir="${LOG_ROOT}/${mode}_w${WINDOW_SIZE}"
+  python scripts/train_sensor_refiner.py \
+    --dataset_file "${TRAIN_NPZ}" \
+    --base_pred_file "${TRAIN_CACHE}" \
+    --output_dir "${output_dir}" \
+    --history_source base \
+    --sensor_mode "${mode}" \
+    --window_size "${WINDOW_SIZE}" \
+    --batch_size "${BATCH_TRAIN}" \
+    --epochs "${EPOCHS}" \
+    --num_workers "${NUM_WORKERS_TRAIN}" \
+    --device cuda \
+    --log_every 20 \
+    2>&1 | tee "${LOG_ROOT}/train_${mode}.log"
+}
+
+eval_refiner() {
+  local mode="$1"
+  local stress_name="$2"
+  shift 2
+  local checkpoint_path="${LOG_ROOT}/${mode}_w${WINDOW_SIZE}/last.pt"
+  local pred_file="${RESULT_ROOT}/${mode}_${stress_name}_stateful.npz"
+  local metrics_json="${RESULT_ROOT}/${mode}_${stress_name}_metrics.json"
+  local metrics_csv="${RESULT_ROOT}/${mode}_${stress_name}_metrics.csv"
+
+  python scripts/eval_sensor_refiner.py \
+    --checkpoint "${checkpoint_path}" \
+    --dataset_file "${EVAL_NPZ}" \
+    --base_pred_file "${EVAL_CACHE}" \
+    --output_file "${pred_file}" \
+    --window_size "${WINDOW_SIZE}" \
+    --stateful \
+    --device cuda \
+    "$@" \
+    2>&1 | tee "${LOG_ROOT}/eval_${mode}_${stress_name}.log"
+
+  python scripts/eval_sensor_refiner_metrics.py \
+    --checkpoint "${CHECKPOINT}" \
+    --dataset_file "${EVAL_NPZ}" \
+    --prediction_file "${pred_file}" \
+    --output_json "${metrics_json}" \
+    --output_csv "${metrics_csv}" \
+    --batch_size "${BATCH_METRICS}" \
+    --device cuda \
+    2>&1 | tee "${LOG_ROOT}/metrics_${mode}_${stress_name}.log"
+}
+
+train_refiner zero
+train_refiner sensor
+
+for mode in zero sensor; do
+  eval_refiner "${mode}" clean
+  eval_refiner "${mode}" blackout1 --blackout_len 1 --blackout_strategy hold
+  eval_refiner "${mode}" blackout3 --blackout_len 3 --blackout_strategy hold
+done
+
+export RESULT_ROOT
+python - <<'PY'
+import csv
+import os
+from pathlib import Path
+
+result_root = Path(os.environ["RESULT_ROOT"])
+rows = []
+for csv_path in sorted(result_root.glob("*_metrics.csv")):
+    stem = csv_path.stem.replace("_metrics", "")
+    parts = stem.split("_")
+    mode = parts[0]
+    stress = "_".join(parts[1:])
+    with csv_path.open("r", newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row.get("prediction") != "refined":
+                continue
+            row["mode"] = mode
+            row["stress"] = stress
+            rows.append(row)
+
+summary_path = result_root / "summary_refined_metrics.csv"
+if rows:
+    fieldnames = ["mode", "stress"] + sorted(k for k in rows[0].keys() if k not in {"mode", "stress"})
+    with summary_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"Wrote summary: {summary_path}")
+else:
+    print("No refined metrics rows found")
+PY

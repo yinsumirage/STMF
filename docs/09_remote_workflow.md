@@ -165,3 +165,42 @@ python <entrypoint> <args> 2>&1 | tee logs_remote/<run_name>.log
 
 - 远程 CUDA、真实图片读取、HaMeR forward、frame-aligned cache、shuffleable v2 training、stateful eval 这条最小链路已经打通。
 - 下一步可以把规模扩大到单个 HO3D sequence 或几千帧，并接入 temporal metrics / blackout stress，而不是继续做代码级 smoke。
+
+## 7. Full HO3D-v3 STMF-v2 pipeline
+
+全量远程实验入口：
+
+```bash
+ssh dual4090 'tmux new -d -s stmf_v2_full_ho3d'
+ssh dual4090 'tmux send-keys -t stmf_v2_full_ho3d "cd /home/user/code/STMF && . /home/user/miniconda3/etc/profile.d/conda.sh && conda activate STMF && CUDA_VISIBLE_DEVICES=1 bash scripts/run_stmf_v2_full_ho3d.sh" C-m'
+ssh dual4090 'tmux capture-pane -t stmf_v2_full_ho3d -p -S -120'
+```
+
+脚本：
+
+- `scripts/run_stmf_v2_full_ho3d.sh`
+
+默认行为：
+
+- 生成或复用 HO3D train/evaluation 全量 HaMeR base cache。
+- 训练两个 v2 refiner：
+  - `sensor_mode=zero`：temporal pose-only refiner
+  - `sensor_mode=sensor`：sensor-guided refiner
+- 在 HO3D evaluation packed NPZ 上导出：
+  - `clean`
+  - `blackout1`
+  - `blackout3`
+- 对每个输出运行 `scripts/eval_sensor_refiner_metrics.py`，得到：
+  - `PA-MPJPE`
+  - `PA-MPVPE`
+  - `MPJVE`
+  - `MPJAE`
+  - `PredJitter`
+  - `Stress_PA-MPJPE`
+- 汇总 refined rows 到：
+  - `results/sensor_refiner/ho3d_v3_${RUN_DATE}/summary_refined_metrics.csv`
+
+2026-06-03 注意：
+
+- 在准备启动全量实验时，Windows `ssh dual4090` 曾连续返回 `Connection refused`。
+- 当 SSH 恢复后，先执行 `git pull --ff-only`，确认远程 HEAD 包含 `scripts/run_stmf_v2_full_ho3d.sh` 后再启动 tmux。
