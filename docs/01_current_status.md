@@ -132,6 +132,7 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
   - `base_pose_noise_std=0.06`: sensor `PA-MPJPE=17.782`, `PA-MPVPE=16.458`; zero `PA-MPJPE=18.048`, `PA-MPVPE=16.697`
   - `sensor_dropout=0.5`: sensor `PA-MPJPE=17.854`, `PA-MPVPE=16.512`; zero `PA-MPJPE=17.903`, `PA-MPVPE=16.573`
   - 结论：在当前 cached protocol 下，sensor-guided refiner 对 base pose 抖动更稳；sensor 大量缺失时仍保持 PA 优势，但 jitter 会退化。
+- 2026-07-01 note: earlier eval-only `SENSOR_NOISE_STD` rows before commit `fix zero sensor eval path` are diagnostic only, because `sensor_mode=zero` was incorrectly noised after zeroing. Use the fixed rerun for any sensor-noise conclusion.
 - `TRAIN_BASE_POSE_HOLD_DROPOUT=0.05/0.1/0.2` 已试过，clean PA-MPJPE 分别约 `17.681 / 17.690 / 17.686`，没有超过 `sensdrop02` 的 `17.614`，暂不作为默认配置。
 
 #### 2.2 STMF 模型和评测链路

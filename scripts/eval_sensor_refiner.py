@@ -101,6 +101,27 @@ def apply_sensor_noise(sensor_window: torch.Tensor, sensor_valid_mask: torch.Ten
     return torch.where(valid.unsqueeze(-1), noisy.clamp(0.0, 1.0), sensor_window)
 
 
+def prepare_sensor_window_for_eval(
+    sensor_window: torch.Tensor,
+    sensor_valid_mask: torch.Tensor,
+    sensor_mode: str,
+    sensor_dropout: float,
+    sensor_noise_std: float,
+    rng: np.random.RandomState | None = None,
+) -> torch.Tensor:
+    if sensor_mode == "zero":
+        return torch.zeros_like(sensor_window)
+    if sensor_dropout > 0:
+        rng = rng or np.random.RandomState()
+        valid_np = sensor_valid_mask.detach().cpu().numpy().astype(bool)
+        drop_np = (rng.rand(*valid_np.shape) < float(sensor_dropout)) & valid_np
+        if drop_np.any():
+            drop = torch.as_tensor(drop_np, device=sensor_window.device, dtype=torch.bool)
+            sensor_window = sensor_window.clone()
+            sensor_window[drop] = 0.0
+    return apply_sensor_noise(sensor_window, sensor_valid_mask, sensor_noise_std)
+
+
 def is_blackout_frame(dataset: SensorRefinerDataset, target_idx: int, blackout_schedule: Dict[str, tuple[int, int]]) -> bool:
     sequence_key, order_pos = dataset.index_to_order_position[int(target_idx)]
     if sequence_key not in blackout_schedule:
@@ -183,16 +204,15 @@ def main() -> None:
             base_cam = sample["base_cam"].to(device).unsqueeze(0)
             sensor_window = sample["sensor_window"].to(device).unsqueeze(0)
             sensor_valid_mask = sample["sensor_valid_mask"].to(device).unsqueeze(0)
-            if sensor_mode == "zero":
-                sensor_window = torch.zeros_like(sensor_window)
             is_stress = is_blackout_frame(dataset, target_idx, blackout_schedule)
-
-            if args.sensor_dropout > 0:
-                sensor_mask_np = sample["sensor_valid_mask"].numpy().astype(bool)
-                drop = (rng.rand(sensor_mask_np.shape[0]) < float(args.sensor_dropout)) & sensor_mask_np
-                if drop.any():
-                    sensor_window[:, drop, :] = 0.0
-            sensor_window = apply_sensor_noise(sensor_window, sensor_valid_mask, args.sensor_noise_std)
+            sensor_window = prepare_sensor_window_for_eval(
+                sensor_window=sensor_window,
+                sensor_valid_mask=sensor_valid_mask,
+                sensor_mode=sensor_mode,
+                sensor_dropout=args.sensor_dropout,
+                sensor_noise_std=args.sensor_noise_std,
+                rng=rng,
+            )
 
             if args.base_pose_noise_std > 0:
                 base_pose[:, 3:] = base_pose[:, 3:] + torch.randn_like(base_pose[:, 3:]) * float(args.base_pose_noise_std)
