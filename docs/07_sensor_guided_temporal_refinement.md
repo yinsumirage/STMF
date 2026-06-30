@@ -177,6 +177,7 @@ AnyHand / WiLoR 暂时只作为未来更强 RGB backbone 候选，
 - optional `global_orient` MSE：只用于 ablation
 - optional smoothness：只约束最后两帧 history 和当前 refined pose 的加速度
 - optional `--base_pose_noise_std`：训练阶段只扰动当前 `base_pose[:, 3:]`，用于让 refiner 见过 RGB/base hand pose 抖动；默认 `0.0`，不影响旧实验。
+- optional `--sensor_dropout / --sensor_noise_std`：训练阶段只扰动有效 sensor timestep；当前 HO3D-v3 cached sweep 里 `sensor_dropout=0.2` 有收益，sensor Gaussian noise 暂未带来额外提升。
 
 当前固定两个 v2 refiner baseline：
 

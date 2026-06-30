@@ -104,21 +104,24 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
 - 100 epoch 会过拟合 primary PA 指标，不作为推荐配置。
 - `SMOOTHNESS_WEIGHT=0.01` 明显拉低 primary PA/MPVPE，不作为推荐配置。
 - 新增训练扰动 `TRAIN_BASE_POSE_NOISE_STD` 后，当前 sensor-guided 最有用的配置是：
-  - `RUN_DATE=20260701_lr5e5_n007m025`
+  - `RUN_DATE=20260701_sensdrop02`
   - `EPOCHS=20`
   - `HISTORY_SOURCE=mixed`
   - `MIXED_GT_PROB=0.25`
   - `TRAIN_BASE_POSE_NOISE_STD=0.07`
+  - `TRAIN_SENSOR_DROPOUT=0.2`
   - `LR=5e-5`
 - 该配置下 sensor-guided refiner 在同配置内明显优于 pose-only：
-  - sensor clean: `PA-MPJPE=17.744`, `PA-MPVPE=16.423`, `MPJVE=2.872`, `PredJitter=4.240`
+  - sensor clean: `PA-MPJPE=17.614`, `PA-MPVPE=16.316`, `MPJVE=2.873`, `PredJitter=4.244`
   - zero clean: `PA-MPJPE=17.903`, `PA-MPVPE=16.573`, `MPJVE=2.875`, `PredJitter=4.249`
 - `LR=5e-5` 比默认 `1e-4` 明显更好；`2.5e-5` 不够，`7.5e-5` 稍差，`5e-5 + 40 epoch` 会过拟合。
-- 用同一最佳配置复核 `SEED=2024/2025/2026`：
-  - sensor clean `PA-MPJPE=17.855 / 17.898 / 17.991`
+- `TRAIN_SENSOR_DROPOUT=0.2` 比 `0.05/0.1/0.15/0.25/0.3` 略好；额外 `TRAIN_SENSOR_NOISE_STD=0.02/0.05` 没有继续提升。
+- 用 `TRAIN_SENSOR_DROPOUT=0.2` 复核 `SEED=2024/2025/2026`：
+  - sensor clean `PA-MPJPE=17.732 / 17.889 / 17.815`
   - 对应 zero clean `PA-MPJPE=17.882 / 18.096 / 18.060`
-  - 结论：sensor 同 seed 稳定优于 zero，但 `SEED=12345` 的 `17.744` 是当前最好单次结果，汇报时应同时说明 seed 方差。
-- `blackout_strategy=hold/zero` 的 stress-frame PA 不稳定，暂时只作为诊断，不作为主结论。当前更可靠的结论是：base-pose noise augmentation + lower LR 能明显改善 cached refiner，sensor 在 `lr5e5_n007m025` 同配置下有 clean + temporal 收益。
+  - 结论：sensor 同 seed 稳定优于 zero，但 `SEED=12345` 的 `17.614` 是当前最好单次结果，汇报时应同时说明 seed 方差。
+  - 加入 sensor dropout 后，`SEED=12345` 的最好单次结果进一步到 `17.614`。
+- `blackout_strategy=hold/zero` 的 stress-frame PA 不稳定，暂时只作为诊断，不作为主结论。当前更可靠的结论是：base-pose noise augmentation + lower LR + sensor dropout 能明显改善 cached refiner，sensor 在 `sensdrop02` 同配置下有 clean + temporal 收益。
 
 #### 2.2 STMF 模型和评测链路
 
