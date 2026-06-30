@@ -114,6 +114,10 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
   - sensor clean: `PA-MPJPE=17.744`, `PA-MPVPE=16.423`, `MPJVE=2.872`, `PredJitter=4.240`
   - zero clean: `PA-MPJPE=17.903`, `PA-MPVPE=16.573`, `MPJVE=2.875`, `PredJitter=4.249`
 - `LR=5e-5` 比默认 `1e-4` 明显更好；`2.5e-5` 不够，`7.5e-5` 稍差，`5e-5 + 40 epoch` 会过拟合。
+- 用同一最佳配置复核 `SEED=2024/2025/2026`：
+  - sensor clean `PA-MPJPE=17.855 / 17.898 / 17.991`
+  - 对应 zero clean `PA-MPJPE=17.882 / 18.096 / 18.060`
+  - 结论：sensor 同 seed 稳定优于 zero，但 `SEED=12345` 的 `17.744` 是当前最好单次结果，汇报时应同时说明 seed 方差。
 - `blackout_strategy=hold/zero` 的 stress-frame PA 不稳定，暂时只作为诊断，不作为主结论。当前更可靠的结论是：base-pose noise augmentation + lower LR 能明显改善 cached refiner，sensor 在 `lr5e5_n007m025` 同配置下有 clean + temporal 收益。
 
 #### 2.2 STMF 模型和评测链路
