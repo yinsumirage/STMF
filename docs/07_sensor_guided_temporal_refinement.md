@@ -57,6 +57,9 @@ HO3D-v3 排查已经给出一个阶段性结论：
 - `Temporal pose-only refiner` 用来判断时序模型本身有没有用
 - `Sensor-guided refiner` 用来判断拉线物理先验是否提供额外收益
 
+当前 `HaMeR + EMA` 已通过 `scripts/export_base_ema_predictions.py` 实现为 cached baseline：
+只对 `hand_pose` 做 sequence-local EMA，并复用 `scripts/eval_sensor_refiner_metrics.py` 计算同一套指标。
+
 AnyHand / WiLoR 暂时只作为未来更强 RGB backbone 候选，
 不要在第一阶段引入训练迁移，否则会混淆：
 

@@ -122,6 +122,11 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
   - 结论：sensor 同 seed 稳定优于 zero，但 `SEED=12345` 的 `17.614` 是当前最好单次结果，汇报时应同时说明 seed 方差。
   - 加入 sensor dropout 后，`SEED=12345` 的最好单次结果进一步到 `17.614`。
 - `blackout_strategy=hold/zero` 的 stress-frame PA 不稳定，暂时只作为诊断，不作为主结论。当前更可靠的结论是：base-pose noise augmentation + lower LR + sensor dropout 能明显改善 cached refiner，sensor 在 `sensdrop02` 同配置下有 clean + temporal 收益。
+- `HaMeR + EMA` baseline 已补齐，入口是 `scripts/export_base_ema_predictions.py`：
+  - sweep `alpha=0.05/0.1/0.2/0.3/0.4/0.6/0.8`
+  - 最好 PA 是 `alpha=0.05`: `PA-MPJPE=18.717`, `PA-MPVPE=17.226`, `MPJVE=2.840`, `PredJitter=4.206`
+  - 最低 jitter 是 `alpha=0.4`: `PA-MPJPE=18.897`, `PA-MPVPE=17.411`, `MPJVE=2.847`, `PredJitter=4.169`
+  - 结论：EMA 能降低 jitter，但 primary 3D 指标明显弱于当前 sensor-guided refiner；当前 sensor 不是只靠过度平滑赢 PA。
 
 #### 2.2 STMF 模型和评测链路
 
