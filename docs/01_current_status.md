@@ -127,6 +127,11 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
   - 最好 PA 是 `alpha=0.05`: `PA-MPJPE=18.717`, `PA-MPVPE=17.226`, `MPJVE=2.840`, `PredJitter=4.206`
   - 最低 jitter 是 `alpha=0.4`: `PA-MPJPE=18.897`, `PA-MPVPE=17.411`, `MPJVE=2.847`, `PredJitter=4.169`
   - 结论：EMA 能降低 jitter，但 primary 3D 指标明显弱于当前 sensor-guided refiner；当前 sensor 不是只靠过度平滑赢 PA。
+- 最佳 `sensdrop02` checkpoint 的 eval-only robustness：
+  - `base_pose_noise_std=0.03`: sensor `PA-MPJPE=17.657`, `PA-MPVPE=16.352`; zero `PA-MPJPE=17.940`, `PA-MPVPE=16.605`
+  - `base_pose_noise_std=0.06`: sensor `PA-MPJPE=17.782`, `PA-MPVPE=16.458`; zero `PA-MPJPE=18.048`, `PA-MPVPE=16.697`
+  - `sensor_dropout=0.5`: sensor `PA-MPJPE=17.854`, `PA-MPVPE=16.512`; zero `PA-MPJPE=17.903`, `PA-MPVPE=16.573`
+  - 结论：在当前 cached protocol 下，sensor-guided refiner 对 base pose 抖动更稳；sensor 大量缺失时仍保持 PA 优势，但 jitter 会退化。
 
 #### 2.2 STMF 模型和评测链路
 
