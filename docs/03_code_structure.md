@@ -274,6 +274,7 @@
 - `scripts/train_sensor_refiner.py`
 - `scripts/eval_sensor_refiner.py`
 - `scripts/eval_sensor_refiner_metrics.py`
+- `scripts/export_base_ema_predictions.py`
 - `scripts/run_stmf_v2_full_ho3d.sh`
 - `hamer/datasets/sensor_refiner_dataset.py`
 - `hamer/models/components/sensor_temporal_refiner.py`
@@ -314,6 +315,9 @@
   - 读取 refiner NPZ 输出。
   - 用 MANO layer 计算 `base/refined` 的 joints / vertices。
   - 输出 `PA-MPJPE / PA-MPVPE / MPJVE / MPJAE / PredJitter / Stress_PA-MPJPE`。
+- `scripts/export_base_ema_predictions.py`
+  - 导出 `HaMeR + EMA` baseline NPZ。
+  - 只对 `hand_pose` 做 sequence-local EMA，输出格式复用 `eval_sensor_refiner_metrics.py`。
 - `scripts/run_stmf_v2_full_ho3d.sh`
   - 远程全量 HO3D-v3 pipeline。
   - 生成/复用 train/eval base cache。

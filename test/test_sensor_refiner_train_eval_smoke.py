@@ -22,6 +22,7 @@ def _load_script_module(name: str, rel_path: str):
 
 train_sensor_refiner = _load_script_module("train_sensor_refiner", "scripts/train_sensor_refiner.py")
 eval_sensor_refiner = _load_script_module("eval_sensor_refiner", "scripts/eval_sensor_refiner.py")
+export_base_ema_predictions = _load_script_module("export_base_ema_predictions", "scripts/export_base_ema_predictions.py")
 
 
 def _make_fake_files(root: Path):
@@ -127,6 +128,17 @@ def test_training_sensor_augmentation_respects_valid_mask_and_clips():
     torch.testing.assert_close(augmented[:, 2], torch.zeros(1, 5))
     assert float(augmented.min()) >= 0.0
     assert float(augmented.max()) <= 1.0
+
+
+def test_base_ema_smooths_hand_pose_and_resets_at_sequence_boundary():
+    base_pose = torch.zeros(4, 48)
+    base_pose[:, 3] = torch.tensor([0.0, 10.0, 20.0, 100.0])
+    sequence_key = ["S1", "S1", "S1", "S2"]
+
+    ema = export_base_ema_predictions.apply_hand_pose_ema(base_pose, sequence_key, alpha=0.5)
+
+    torch.testing.assert_close(ema[:, :3], base_pose[:, :3])
+    torch.testing.assert_close(ema[:, 3], torch.tensor([0.0, 5.0, 12.5, 100.0]))
 
 
 if __name__ == "__main__":
