@@ -111,6 +111,24 @@ def test_training_base_pose_noise_keeps_global_orientation_clean():
     assert torch.count_nonzero(noisy[:, 3:]) > 0
 
 
+def test_training_sensor_augmentation_respects_valid_mask_and_clips():
+    sensor = torch.ones(1, 3, 5) * 0.5
+    valid = torch.tensor([[True, False, True]])
+
+    augmented = train_sensor_refiner.apply_sensor_augmentation(
+        sensor.clone(),
+        valid,
+        dropout=1.0,
+        noise_std=10.0,
+    )
+
+    torch.testing.assert_close(augmented[:, 0], torch.zeros(1, 5))
+    torch.testing.assert_close(augmented[:, 1], sensor[:, 1])
+    torch.testing.assert_close(augmented[:, 2], torch.zeros(1, 5))
+    assert float(augmented.min()) >= 0.0
+    assert float(augmented.max()) <= 1.0
+
+
 if __name__ == "__main__":
     for test_name, test_fn in sorted(globals().items()):
         if test_name.startswith("test_"):

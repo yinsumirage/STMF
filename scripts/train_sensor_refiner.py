@@ -65,6 +65,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smoothness_weight", type=float, default=0.0)
     parser.add_argument("--global_orient_weight", type=float, default=0.0)
     parser.add_argument("--base_pose_noise_std", type=float, default=0.0)
+    parser.add_argument("--sensor_noise_std", type=float, default=0.0)
+    parser.add_argument("--sensor_dropout", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=12345)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--log_every", type=int, default=50)
@@ -76,6 +78,23 @@ def apply_base_pose_noise(base_pose: torch.Tensor, noise_std: float) -> torch.Te
         return base_pose
     base_pose[:, 3:] = base_pose[:, 3:] + torch.randn_like(base_pose[:, 3:]) * float(noise_std)
     return base_pose
+
+
+def apply_sensor_augmentation(
+    sensor_window: torch.Tensor,
+    sensor_valid_mask: torch.Tensor,
+    dropout: float,
+    noise_std: float,
+) -> torch.Tensor:
+    valid = sensor_valid_mask.to(dtype=torch.bool)
+    if noise_std > 0:
+        noise = torch.randn_like(sensor_window) * float(noise_std)
+        sensor_window = torch.where(valid.unsqueeze(-1), sensor_window + noise, sensor_window)
+        sensor_window = sensor_window.clamp(0.0, 1.0)
+    if dropout > 0:
+        drop = (torch.rand_like(sensor_window[..., 0]) < float(dropout)) & valid
+        sensor_window = torch.where(drop.unsqueeze(-1), torch.zeros_like(sensor_window), sensor_window)
+    return sensor_window
 
 
 def compute_smoothness_loss(batch: Dict[str, torch.Tensor], refined_pose: torch.Tensor) -> torch.Tensor:
@@ -171,6 +190,13 @@ def main() -> None:
             sensor_window = batch["sensor_window"]
             if args.sensor_mode == "zero":
                 sensor_window = torch.zeros_like(sensor_window)
+            else:
+                sensor_window = apply_sensor_augmentation(
+                    sensor_window.clone(),
+                    batch["sensor_valid_mask"],
+                    dropout=args.sensor_dropout,
+                    noise_std=args.sensor_noise_std,
+                )
             output = model(
                 base_pose=base_pose,
                 pose_window=batch["pose_window"],

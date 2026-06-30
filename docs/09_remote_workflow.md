@@ -206,6 +206,8 @@ ssh dual4090 'tmux capture-pane -t stmf_v2_full_ho3d -p -S -120'
   - `SMOOTHNESS_WEIGHT`
   - `GLOBAL_ORIENT_WEIGHT`
   - `TRAIN_BASE_POSE_NOISE_STD`
+  - `TRAIN_SENSOR_NOISE_STD`
+  - `TRAIN_SENSOR_DROPOUT`
   - `SEED`
 - 常用 stress eval 参数也已经暴露为环境变量：
   - `BLACKOUT_STRATEGY`
