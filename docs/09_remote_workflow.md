@@ -189,9 +189,10 @@ ssh dual4090 'tmux capture-pane -t stmf_v2_full_ho3d -p -S -120'
   - train cache 和 eval cache 并行生成
   - pose-only 和 sensor-guided 两条 refiner 线并行运行
 - 默认 batch：
-  - `BATCH_CACHE=256`
-  - `BATCH_TRAIN=4096`
-  - `BATCH_METRICS=2048`
+  - `BATCH_CACHE=1024`
+  - `BATCH_TRAIN=8192`
+  - `BATCH_METRICS=4096`
+  - `NUM_WORKERS_CACHE=2`
   如需压更高显存，优先只调这些环境变量，不改代码。
 - 训练两个 v2 refiner：
   - `sensor_mode=zero`：temporal pose-only refiner
