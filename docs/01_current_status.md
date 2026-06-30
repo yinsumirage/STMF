@@ -104,19 +104,17 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
 - 100 epoch 会过拟合 primary PA 指标，不作为推荐配置。
 - `SMOOTHNESS_WEIGHT=0.01` 明显拉低 primary PA/MPVPE，不作为推荐配置。
 - 新增训练扰动 `TRAIN_BASE_POSE_NOISE_STD` 后，当前 sensor-guided 最有用的配置是：
-  - `RUN_DATE=20260701_noise006mix025`
+  - `RUN_DATE=20260701_lr5e5_n007m025`
   - `EPOCHS=20`
   - `HISTORY_SOURCE=mixed`
   - `MIXED_GT_PROB=0.25`
-  - `TRAIN_BASE_POSE_NOISE_STD=0.06`
+  - `TRAIN_BASE_POSE_NOISE_STD=0.07`
+  - `LR=5e-5`
 - 该配置下 sensor-guided refiner 在同配置内明显优于 pose-only：
-  - sensor clean: `PA-MPJPE=17.923`, `PA-MPVPE=16.592`, `MPJVE=2.863`, `PredJitter=4.224`
-  - zero clean: `PA-MPJPE=18.137`, `PA-MPVPE=16.825`, `MPJVE=2.868`, `PredJitter=4.236`
-- `TRAIN_BASE_POSE_NOISE_STD=0.07, HISTORY_SOURCE=mixed` 的 pose-only clean PA 更低：
-  - zero clean: `PA-MPJPE=17.877`, `PA-MPVPE=16.588`
-  - sensor clean: `PA-MPJPE=17.968`, `PA-MPVPE=16.616`
-  - 这说明当前 sensor 分支的收益仍然偏小，不能只拿 best-overall 数字证明 sensor 有用。
-- `blackout_strategy=hold/zero` 的 stress-frame PA 不稳定，暂时只作为诊断，不作为主结论。当前更可靠的结论是：base-pose noise augmentation 能明显改善 cached refiner，sensor 在 `noise006mix025` 同配置下有 clean + temporal 收益，但 overall best 仍可能来自 pose-only，需要继续优化 sensor 使用方式。
+  - sensor clean: `PA-MPJPE=17.744`, `PA-MPVPE=16.423`, `MPJVE=2.872`, `PredJitter=4.240`
+  - zero clean: `PA-MPJPE=17.903`, `PA-MPVPE=16.573`, `MPJVE=2.875`, `PredJitter=4.249`
+- `LR=5e-5` 比默认 `1e-4` 明显更好；`2.5e-5` 不够，`7.5e-5` 稍差，`5e-5 + 40 epoch` 会过拟合。
+- `blackout_strategy=hold/zero` 的 stress-frame PA 不稳定，暂时只作为诊断，不作为主结论。当前更可靠的结论是：base-pose noise augmentation + lower LR 能明显改善 cached refiner，sensor 在 `lr5e5_n007m025` 同配置下有 clean + temporal 收益。
 
 #### 2.2 STMF 模型和评测链路
 

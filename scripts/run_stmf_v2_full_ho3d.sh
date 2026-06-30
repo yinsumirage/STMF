@@ -46,6 +46,7 @@ BLACKOUT_1_LEN="${BLACKOUT_1_LEN:-1}"
 BLACKOUT_3_LEN="${BLACKOUT_3_LEN:-3}"
 BASE_POSE_NOISE_STD="${BASE_POSE_NOISE_STD:-0.0}"
 SENSOR_DROPOUT="${SENSOR_DROPOUT:-0.0}"
+SEED="${SEED:-12345}"
 
 mkdir -p "${RESULT_ROOT}" "${LOG_ROOT}"
 
@@ -70,6 +71,7 @@ echo "TRAIN_BASE_POSE_NOISE_STD=${TRAIN_BASE_POSE_NOISE_STD}"
 echo "BLACKOUT_STRATEGY=${BLACKOUT_STRATEGY}"
 echo "BASE_POSE_NOISE_STD=${BASE_POSE_NOISE_STD}"
 echo "SENSOR_DROPOUT=${SENSOR_DROPOUT}"
+echo "SEED=${SEED}"
 
 cache_split() {
   local gpu="$1"
@@ -120,6 +122,7 @@ train_refiner() {
     --smoothness_weight "${SMOOTHNESS_WEIGHT}" \
     --global_orient_weight "${GLOBAL_ORIENT_WEIGHT}" \
     --base_pose_noise_std "${TRAIN_BASE_POSE_NOISE_STD}" \
+    --seed "${SEED}" \
     --device cuda \
     --log_every 20 \
     2>&1 | tee "${LOG_ROOT}/train_${mode}.log"
@@ -144,6 +147,7 @@ eval_refiner() {
     --stateful \
     --base_pose_noise_std "${BASE_POSE_NOISE_STD}" \
     --sensor_dropout "${SENSOR_DROPOUT}" \
+    --seed "${SEED}" \
     --device cuda \
     "$@" \
     2>&1 | tee "${LOG_ROOT}/eval_${mode}_${stress_name}.log"
