@@ -172,7 +172,7 @@ python <entrypoint> <args> 2>&1 | tee logs_remote/<run_name>.log
 
 ```bash
 ssh dual4090 'tmux new -d -s stmf_v2_full_ho3d'
-ssh dual4090 'tmux send-keys -t stmf_v2_full_ho3d "cd /home/user/code/STMF && . /home/user/miniconda3/etc/profile.d/conda.sh && conda activate STMF && CUDA_VISIBLE_DEVICES=1 bash scripts/run_stmf_v2_full_ho3d.sh" C-m'
+ssh dual4090 'tmux send-keys -t stmf_v2_full_ho3d "cd /home/user/code/STMF && . /home/user/miniconda3/etc/profile.d/conda.sh && conda activate STMF && bash scripts/run_stmf_v2_full_ho3d.sh" C-m'
 ssh dual4090 'tmux capture-pane -t stmf_v2_full_ho3d -p -S -120'
 ```
 
@@ -183,6 +183,16 @@ ssh dual4090 'tmux capture-pane -t stmf_v2_full_ho3d -p -S -120'
 默认行为：
 
 - 生成或复用 HO3D train/evaluation 全量 HaMeR base cache。
+- 默认使用双卡：
+  - `GPU_ZERO=0`
+  - `GPU_SENSOR=1`
+  - train cache 和 eval cache 并行生成
+  - pose-only 和 sensor-guided 两条 refiner 线并行运行
+- 默认 batch：
+  - `BATCH_CACHE=256`
+  - `BATCH_TRAIN=4096`
+  - `BATCH_METRICS=2048`
+  如需压更高显存，优先只调这些环境变量，不改代码。
 - 训练两个 v2 refiner：
   - `sensor_mode=zero`：temporal pose-only refiner
   - `sensor_mode=sensor`：sensor-guided refiner

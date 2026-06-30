@@ -8,7 +8,7 @@ set -euo pipefail
 #   cd /home/user/code/STMF
 #   . /home/user/miniconda3/etc/profile.d/conda.sh
 #   conda activate STMF
-#   CUDA_VISIBLE_DEVICES=1 bash scripts/run_stmf_v2_full_ho3d.sh
+#   bash scripts/run_stmf_v2_full_ho3d.sh
 #
 # This script intentionally keeps all data/log/result paths explicit so local
 # WSL path differences do not leak into remote experiments.
@@ -23,52 +23,55 @@ EVAL_CACHE="${EVAL_CACHE:-${DATA_ROOT}/ho3d_evaluation_hamer_base_cache.npz}"
 RESULT_ROOT="${RESULT_ROOT:-results/sensor_refiner/ho3d_v3_${RUN_DATE}}"
 LOG_ROOT="${LOG_ROOT:-logs_remote/ho3d_v3_${RUN_DATE}}"
 
-BATCH_CACHE="${BATCH_CACHE:-128}"
-BATCH_TRAIN="${BATCH_TRAIN:-1024}"
-BATCH_METRICS="${BATCH_METRICS:-512}"
+BATCH_CACHE="${BATCH_CACHE:-256}"
+BATCH_TRAIN="${BATCH_TRAIN:-4096}"
+BATCH_METRICS="${BATCH_METRICS:-2048}"
 EPOCHS="${EPOCHS:-20}"
 WINDOW_SIZE="${WINDOW_SIZE:-5}"
 NUM_WORKERS_CACHE="${NUM_WORKERS_CACHE:-8}"
 NUM_WORKERS_TRAIN="${NUM_WORKERS_TRAIN:-4}"
+GPU_ZERO="${GPU_ZERO:-0}"
+GPU_SENSOR="${GPU_SENSOR:-1}"
 
 mkdir -p "${RESULT_ROOT}" "${LOG_ROOT}"
 
 echo "RUN_DATE=${RUN_DATE}"
 echo "HEAD=$(git rev-parse --short HEAD)"
-echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
+echo "GPU_ZERO=${GPU_ZERO}"
+echo "GPU_SENSOR=${GPU_SENSOR}"
 
-if [[ ! -f "${TRAIN_CACHE}" ]]; then
-  python scripts/cache_base_hamer_predictions.py \
+cache_split() {
+  local gpu="$1"
+  local dataset_file="$2"
+  local output_file="$3"
+  local log_file="$4"
+  if [[ -f "${output_file}" ]]; then
+    echo "Skip existing cache: ${output_file}"
+    return
+  fi
+  CUDA_VISIBLE_DEVICES="${gpu}" python scripts/cache_base_hamer_predictions.py \
     --checkpoint "${CHECKPOINT}" \
-    --dataset_file "${TRAIN_NPZ}" \
+    --dataset_file "${dataset_file}" \
     --img_dir "${DATA_ROOT}" \
-    --output_file "${TRAIN_CACHE}" \
+    --output_file "${output_file}" \
     --split train \
     --batch_size "${BATCH_CACHE}" \
     --num_workers "${NUM_WORKERS_CACHE}" \
-    2>&1 | tee "${LOG_ROOT}/cache_train.log"
-else
-  echo "Skip existing train cache: ${TRAIN_CACHE}"
-fi
+    2>&1 | tee "${log_file}"
+}
 
-if [[ ! -f "${EVAL_CACHE}" ]]; then
-  python scripts/cache_base_hamer_predictions.py \
-    --checkpoint "${CHECKPOINT}" \
-    --dataset_file "${EVAL_NPZ}" \
-    --img_dir "${DATA_ROOT}" \
-    --output_file "${EVAL_CACHE}" \
-    --split train \
-    --batch_size "${BATCH_CACHE}" \
-    --num_workers "${NUM_WORKERS_CACHE}" \
-    2>&1 | tee "${LOG_ROOT}/cache_eval.log"
-else
-  echo "Skip existing eval cache: ${EVAL_CACHE}"
-fi
+cache_split "${GPU_ZERO}" "${TRAIN_NPZ}" "${TRAIN_CACHE}" "${LOG_ROOT}/cache_train.log" &
+cache_train_pid=$!
+cache_split "${GPU_SENSOR}" "${EVAL_NPZ}" "${EVAL_CACHE}" "${LOG_ROOT}/cache_eval.log" &
+cache_eval_pid=$!
+wait "${cache_train_pid}"
+wait "${cache_eval_pid}"
 
 train_refiner() {
   local mode="$1"
+  local gpu="$2"
   local output_dir="${LOG_ROOT}/${mode}_w${WINDOW_SIZE}"
-  python scripts/train_sensor_refiner.py \
+  CUDA_VISIBLE_DEVICES="${gpu}" python scripts/train_sensor_refiner.py \
     --dataset_file "${TRAIN_NPZ}" \
     --base_pred_file "${TRAIN_CACHE}" \
     --output_dir "${output_dir}" \
@@ -85,14 +88,15 @@ train_refiner() {
 
 eval_refiner() {
   local mode="$1"
-  local stress_name="$2"
-  shift 2
+  local gpu="$2"
+  local stress_name="$3"
+  shift 3
   local checkpoint_path="${LOG_ROOT}/${mode}_w${WINDOW_SIZE}/last.pt"
   local pred_file="${RESULT_ROOT}/${mode}_${stress_name}_stateful.npz"
   local metrics_json="${RESULT_ROOT}/${mode}_${stress_name}_metrics.json"
   local metrics_csv="${RESULT_ROOT}/${mode}_${stress_name}_metrics.csv"
 
-  python scripts/eval_sensor_refiner.py \
+  CUDA_VISIBLE_DEVICES="${gpu}" python scripts/eval_sensor_refiner.py \
     --checkpoint "${checkpoint_path}" \
     --dataset_file "${EVAL_NPZ}" \
     --base_pred_file "${EVAL_CACHE}" \
@@ -103,7 +107,7 @@ eval_refiner() {
     "$@" \
     2>&1 | tee "${LOG_ROOT}/eval_${mode}_${stress_name}.log"
 
-  python scripts/eval_sensor_refiner_metrics.py \
+  CUDA_VISIBLE_DEVICES="${gpu}" python scripts/eval_sensor_refiner_metrics.py \
     --checkpoint "${CHECKPOINT}" \
     --dataset_file "${EVAL_NPZ}" \
     --prediction_file "${pred_file}" \
@@ -114,14 +118,21 @@ eval_refiner() {
     2>&1 | tee "${LOG_ROOT}/metrics_${mode}_${stress_name}.log"
 }
 
-train_refiner zero
-train_refiner sensor
+run_mode() {
+  local mode="$1"
+  local gpu="$2"
+  train_refiner "${mode}" "${gpu}"
+  eval_refiner "${mode}" "${gpu}" clean
+  eval_refiner "${mode}" "${gpu}" blackout1 --blackout_len 1 --blackout_strategy hold
+  eval_refiner "${mode}" "${gpu}" blackout3 --blackout_len 3 --blackout_strategy hold
+}
 
-for mode in zero sensor; do
-  eval_refiner "${mode}" clean
-  eval_refiner "${mode}" blackout1 --blackout_len 1 --blackout_strategy hold
-  eval_refiner "${mode}" blackout3 --blackout_len 3 --blackout_strategy hold
-done
+run_mode zero "${GPU_ZERO}" &
+zero_pid=$!
+run_mode sensor "${GPU_SENSOR}" &
+sensor_pid=$!
+wait "${zero_pid}"
+wait "${sensor_pid}"
 
 export RESULT_ROOT
 python - <<'PY'
