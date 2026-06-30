@@ -49,6 +49,7 @@ BLACKOUT_1_LEN="${BLACKOUT_1_LEN:-1}"
 BLACKOUT_3_LEN="${BLACKOUT_3_LEN:-3}"
 BASE_POSE_NOISE_STD="${BASE_POSE_NOISE_STD:-0.0}"
 SENSOR_DROPOUT="${SENSOR_DROPOUT:-0.0}"
+SENSOR_NOISE_STD="${SENSOR_NOISE_STD:-0.0}"
 SEED="${SEED:-12345}"
 
 mkdir -p "${RESULT_ROOT}" "${LOG_ROOT}"
@@ -77,6 +78,7 @@ echo "TRAIN_SENSOR_DROPOUT=${TRAIN_SENSOR_DROPOUT}"
 echo "BLACKOUT_STRATEGY=${BLACKOUT_STRATEGY}"
 echo "BASE_POSE_NOISE_STD=${BASE_POSE_NOISE_STD}"
 echo "SENSOR_DROPOUT=${SENSOR_DROPOUT}"
+echo "SENSOR_NOISE_STD=${SENSOR_NOISE_STD}"
 echo "SEED=${SEED}"
 
 cache_split() {
@@ -156,6 +158,7 @@ eval_refiner() {
     --stateful \
     --base_pose_noise_std "${BASE_POSE_NOISE_STD}" \
     --sensor_dropout "${SENSOR_DROPOUT}" \
+    --sensor_noise_std "${SENSOR_NOISE_STD}" \
     --seed "${SEED}" \
     --device cuda \
     "$@" \

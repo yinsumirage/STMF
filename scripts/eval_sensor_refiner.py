@@ -65,6 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--blackout_strategy", type=str, choices=["hold", "zero"], default="hold")
     parser.add_argument("--base_pose_noise_std", type=float, default=0.0, help="Gaussian noise added to current base hand pose during eval")
     parser.add_argument("--sensor_dropout", type=float, default=0.0, help="Probability of zeroing a valid sensor timestep during eval")
+    parser.add_argument("--sensor_noise_std", type=float, default=0.0, help="Gaussian noise added to valid sensor timesteps during eval")
     parser.add_argument("--seed", type=int, default=12345)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
@@ -90,6 +91,14 @@ def build_eval_meta(dataset: SensorRefinerDataset) -> List[Dict]:
         }
         for idx in dataset.sample_indices.tolist()
     ]
+
+
+def apply_sensor_noise(sensor_window: torch.Tensor, sensor_valid_mask: torch.Tensor, noise_std: float) -> torch.Tensor:
+    if noise_std <= 0:
+        return sensor_window
+    valid = sensor_valid_mask.to(dtype=torch.bool)
+    noisy = sensor_window + torch.randn_like(sensor_window) * float(noise_std)
+    return torch.where(valid.unsqueeze(-1), noisy.clamp(0.0, 1.0), sensor_window)
 
 
 def is_blackout_frame(dataset: SensorRefinerDataset, target_idx: int, blackout_schedule: Dict[str, tuple[int, int]]) -> bool:
@@ -183,6 +192,7 @@ def main() -> None:
                 drop = (rng.rand(sensor_mask_np.shape[0]) < float(args.sensor_dropout)) & sensor_mask_np
                 if drop.any():
                     sensor_window[:, drop, :] = 0.0
+            sensor_window = apply_sensor_noise(sensor_window, sensor_valid_mask, args.sensor_noise_std)
 
             if args.base_pose_noise_std > 0:
                 base_pose[:, 3:] = base_pose[:, 3:] + torch.randn_like(base_pose[:, 3:]) * float(args.base_pose_noise_std)
@@ -243,6 +253,7 @@ def main() -> None:
         blackout_strategy=str(args.blackout_strategy),
         base_pose_noise_std=float(args.base_pose_noise_std),
         sensor_dropout=float(args.sensor_dropout),
+        sensor_noise_std=float(args.sensor_noise_std),
         checkpoint=str(args.checkpoint),
         stateful=bool(args.stateful),
     )

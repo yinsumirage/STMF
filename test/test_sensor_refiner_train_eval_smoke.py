@@ -130,6 +130,18 @@ def test_training_sensor_augmentation_respects_valid_mask_and_clips():
     assert float(augmented.max()) <= 1.0
 
 
+def test_eval_sensor_noise_respects_valid_mask_and_clips():
+    sensor = torch.ones(1, 3, 5) * 0.5
+    valid = torch.tensor([[True, False, True]])
+
+    noisy = eval_sensor_refiner.apply_sensor_noise(sensor.clone(), valid, noise_std=10.0)
+
+    torch.testing.assert_close(noisy[:, 1], sensor[:, 1])
+    assert not torch.equal(noisy[:, 0], sensor[:, 0])
+    assert float(noisy.min()) >= 0.0
+    assert float(noisy.max()) <= 1.0
+
+
 def test_training_base_pose_hold_dropout_uses_previous_valid_pose_only():
     base_pose = torch.ones(2, 48)
     pose_window = torch.zeros(2, 3, 48)
