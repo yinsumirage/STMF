@@ -176,6 +176,7 @@ AnyHand / WiLoR 暂时只作为未来更强 RGB backbone 候选，
 - `hand_pose` residual MSE：默认主 loss
 - optional `global_orient` MSE：只用于 ablation
 - optional smoothness：只约束最后两帧 history 和当前 refined pose 的加速度
+- optional `--base_pose_noise_std`：训练阶段只扰动当前 `base_pose[:, 3:]`，用于让 refiner 见过 RGB/base hand pose 抖动；默认 `0.0`，不影响旧实验。
 
 当前固定两个 v2 refiner baseline：
 
