@@ -64,10 +64,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--smoothness_weight", type=float, default=0.0)
     parser.add_argument("--global_orient_weight", type=float, default=0.0)
+    parser.add_argument("--base_pose_noise_std", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=12345)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--log_every", type=int, default=50)
     return parser.parse_args()
+
+
+def apply_base_pose_noise(base_pose: torch.Tensor, noise_std: float) -> torch.Tensor:
+    if noise_std <= 0:
+        return base_pose
+    base_pose[:, 3:] = base_pose[:, 3:] + torch.randn_like(base_pose[:, 3:]) * float(noise_std)
+    return base_pose
 
 
 def compute_smoothness_loss(batch: Dict[str, torch.Tensor], refined_pose: torch.Tensor) -> torch.Tensor:
@@ -159,11 +167,12 @@ def main() -> None:
         progress = tqdm(dataloader, desc=f"epoch {epoch + 1}/{args.epochs}")
         for batch in progress:
             batch = recursive_to_device(batch, device)
+            base_pose = apply_base_pose_noise(batch["base_pose"].clone(), args.base_pose_noise_std)
             sensor_window = batch["sensor_window"]
             if args.sensor_mode == "zero":
                 sensor_window = torch.zeros_like(sensor_window)
             output = model(
-                base_pose=batch["base_pose"],
+                base_pose=base_pose,
                 pose_window=batch["pose_window"],
                 sensor_window=sensor_window,
                 pose_valid_mask=batch["pose_valid_mask"],

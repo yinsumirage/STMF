@@ -103,6 +103,14 @@ def test_sensor_refiner_one_step_train_save_load_and_stateful_window():
         torch.testing.assert_close(pose_window[2], torch.full((48,), 2.0))
 
 
+def test_training_base_pose_noise_keeps_global_orientation_clean():
+    base_pose = torch.zeros(4, 48)
+    noisy = train_sensor_refiner.apply_base_pose_noise(base_pose.clone(), noise_std=0.1)
+
+    torch.testing.assert_close(noisy[:, :3], base_pose[:, :3])
+    assert torch.count_nonzero(noisy[:, 3:]) > 0
+
+
 if __name__ == "__main__":
     for test_name, test_fn in sorted(globals().items()):
         if test_name.startswith("test_"):
