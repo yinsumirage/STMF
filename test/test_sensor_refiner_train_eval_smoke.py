@@ -130,6 +130,23 @@ def test_training_sensor_augmentation_respects_valid_mask_and_clips():
     assert float(augmented.max()) <= 1.0
 
 
+def test_training_base_pose_hold_dropout_uses_previous_valid_pose_only():
+    base_pose = torch.ones(2, 48)
+    pose_window = torch.zeros(2, 3, 48)
+    pose_window[:, -2] = 3.0
+    valid = torch.tensor([[True, True, True], [False, False, True]])
+
+    held = train_sensor_refiner.apply_base_pose_hold_dropout(
+        base_pose.clone(),
+        pose_window,
+        valid,
+        dropout=1.0,
+    )
+
+    torch.testing.assert_close(held[0], torch.full((48,), 3.0))
+    torch.testing.assert_close(held[1], base_pose[1])
+
+
 def test_base_ema_smooths_hand_pose_and_resets_at_sequence_boundary():
     base_pose = torch.zeros(4, 48)
     base_pose[:, 3] = torch.tensor([0.0, 10.0, 20.0, 100.0])

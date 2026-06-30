@@ -65,6 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smoothness_weight", type=float, default=0.0)
     parser.add_argument("--global_orient_weight", type=float, default=0.0)
     parser.add_argument("--base_pose_noise_std", type=float, default=0.0)
+    parser.add_argument("--base_pose_hold_dropout", type=float, default=0.0)
     parser.add_argument("--sensor_noise_std", type=float, default=0.0)
     parser.add_argument("--sensor_dropout", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=12345)
@@ -77,6 +78,21 @@ def apply_base_pose_noise(base_pose: torch.Tensor, noise_std: float) -> torch.Te
     if noise_std <= 0:
         return base_pose
     base_pose[:, 3:] = base_pose[:, 3:] + torch.randn_like(base_pose[:, 3:]) * float(noise_std)
+    return base_pose
+
+
+def apply_base_pose_hold_dropout(
+    base_pose: torch.Tensor,
+    pose_window: torch.Tensor,
+    pose_valid_mask: torch.Tensor,
+    dropout: float,
+) -> torch.Tensor:
+    if dropout <= 0 or pose_window.shape[1] < 2:
+        return base_pose
+    can_hold = pose_valid_mask[:, -2].to(dtype=torch.bool)
+    drop = (torch.rand(base_pose.shape[0], device=base_pose.device) < float(dropout)) & can_hold
+    if drop.any():
+        base_pose = torch.where(drop[:, None], pose_window[:, -2, :], base_pose)
     return base_pose
 
 
@@ -186,7 +202,13 @@ def main() -> None:
         progress = tqdm(dataloader, desc=f"epoch {epoch + 1}/{args.epochs}")
         for batch in progress:
             batch = recursive_to_device(batch, device)
-            base_pose = apply_base_pose_noise(batch["base_pose"].clone(), args.base_pose_noise_std)
+            base_pose = apply_base_pose_hold_dropout(
+                batch["base_pose"].clone(),
+                batch["pose_window"],
+                batch["pose_valid_mask"],
+                dropout=args.base_pose_hold_dropout,
+            )
+            base_pose = apply_base_pose_noise(base_pose, args.base_pose_noise_std)
             sensor_window = batch["sensor_window"]
             if args.sensor_mode == "zero":
                 sensor_window = torch.zeros_like(sensor_window)
