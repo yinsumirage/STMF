@@ -32,6 +32,19 @@ NUM_WORKERS_CACHE="${NUM_WORKERS_CACHE:-2}"
 NUM_WORKERS_TRAIN="${NUM_WORKERS_TRAIN:-4}"
 GPU_ZERO="${GPU_ZERO:-0}"
 GPU_SENSOR="${GPU_SENSOR:-1}"
+HISTORY_SOURCE="${HISTORY_SOURCE:-base}"
+MIXED_GT_PROB="${MIXED_GT_PROB:-0.5}"
+LR="${LR:-1e-4}"
+WEIGHT_DECAY="${WEIGHT_DECAY:-1e-4}"
+HIDDEN_DIM="${HIDDEN_DIM:-256}"
+NUM_LAYERS="${NUM_LAYERS:-2}"
+SMOOTHNESS_WEIGHT="${SMOOTHNESS_WEIGHT:-0.0}"
+GLOBAL_ORIENT_WEIGHT="${GLOBAL_ORIENT_WEIGHT:-0.0}"
+BLACKOUT_STRATEGY="${BLACKOUT_STRATEGY:-hold}"
+BLACKOUT_1_LEN="${BLACKOUT_1_LEN:-1}"
+BLACKOUT_3_LEN="${BLACKOUT_3_LEN:-3}"
+BASE_POSE_NOISE_STD="${BASE_POSE_NOISE_STD:-0.0}"
+SENSOR_DROPOUT="${SENSOR_DROPOUT:-0.0}"
 
 mkdir -p "${RESULT_ROOT}" "${LOG_ROOT}"
 
@@ -39,6 +52,22 @@ echo "RUN_DATE=${RUN_DATE}"
 echo "HEAD=$(git rev-parse --short HEAD)"
 echo "GPU_ZERO=${GPU_ZERO}"
 echo "GPU_SENSOR=${GPU_SENSOR}"
+echo "BATCH_CACHE=${BATCH_CACHE}"
+echo "BATCH_TRAIN=${BATCH_TRAIN}"
+echo "BATCH_METRICS=${BATCH_METRICS}"
+echo "EPOCHS=${EPOCHS}"
+echo "WINDOW_SIZE=${WINDOW_SIZE}"
+echo "HISTORY_SOURCE=${HISTORY_SOURCE}"
+echo "MIXED_GT_PROB=${MIXED_GT_PROB}"
+echo "LR=${LR}"
+echo "WEIGHT_DECAY=${WEIGHT_DECAY}"
+echo "HIDDEN_DIM=${HIDDEN_DIM}"
+echo "NUM_LAYERS=${NUM_LAYERS}"
+echo "SMOOTHNESS_WEIGHT=${SMOOTHNESS_WEIGHT}"
+echo "GLOBAL_ORIENT_WEIGHT=${GLOBAL_ORIENT_WEIGHT}"
+echo "BLACKOUT_STRATEGY=${BLACKOUT_STRATEGY}"
+echo "BASE_POSE_NOISE_STD=${BASE_POSE_NOISE_STD}"
+echo "SENSOR_DROPOUT=${SENSOR_DROPOUT}"
 
 cache_split() {
   local gpu="$1"
@@ -75,12 +104,19 @@ train_refiner() {
     --dataset_file "${TRAIN_NPZ}" \
     --base_pred_file "${TRAIN_CACHE}" \
     --output_dir "${output_dir}" \
-    --history_source base \
+    --history_source "${HISTORY_SOURCE}" \
     --sensor_mode "${mode}" \
+    --mixed_gt_prob "${MIXED_GT_PROB}" \
+    --hidden_dim "${HIDDEN_DIM}" \
+    --num_layers "${NUM_LAYERS}" \
     --window_size "${WINDOW_SIZE}" \
     --batch_size "${BATCH_TRAIN}" \
     --epochs "${EPOCHS}" \
+    --lr "${LR}" \
+    --weight_decay "${WEIGHT_DECAY}" \
     --num_workers "${NUM_WORKERS_TRAIN}" \
+    --smoothness_weight "${SMOOTHNESS_WEIGHT}" \
+    --global_orient_weight "${GLOBAL_ORIENT_WEIGHT}" \
     --device cuda \
     --log_every 20 \
     2>&1 | tee "${LOG_ROOT}/train_${mode}.log"
@@ -103,6 +139,8 @@ eval_refiner() {
     --output_file "${pred_file}" \
     --window_size "${WINDOW_SIZE}" \
     --stateful \
+    --base_pose_noise_std "${BASE_POSE_NOISE_STD}" \
+    --sensor_dropout "${SENSOR_DROPOUT}" \
     --device cuda \
     "$@" \
     2>&1 | tee "${LOG_ROOT}/eval_${mode}_${stress_name}.log"
@@ -123,8 +161,8 @@ run_mode() {
   local gpu="$2"
   train_refiner "${mode}" "${gpu}"
   eval_refiner "${mode}" "${gpu}" clean
-  eval_refiner "${mode}" "${gpu}" blackout1 --blackout_len 1 --blackout_strategy hold
-  eval_refiner "${mode}" "${gpu}" blackout3 --blackout_len 3 --blackout_strategy hold
+  eval_refiner "${mode}" "${gpu}" blackout1 --blackout_len "${BLACKOUT_1_LEN}" --blackout_strategy "${BLACKOUT_STRATEGY}"
+  eval_refiner "${mode}" "${gpu}" blackout3 --blackout_len "${BLACKOUT_3_LEN}" --blackout_strategy "${BLACKOUT_STRATEGY}"
 }
 
 run_mode zero "${GPU_ZERO}" &

@@ -194,6 +194,24 @@ ssh dual4090 'tmux capture-pane -t stmf_v2_full_ho3d -p -S -120'
   - `BATCH_METRICS=4096`
   - `NUM_WORKERS_CACHE=2`
   如需压更高显存，优先只调这些环境变量，不改代码。
+- 常用训练参数已经暴露为环境变量，启动时会打印到日志开头：
+  - `EPOCHS`
+  - `WINDOW_SIZE`
+  - `HISTORY_SOURCE`
+  - `MIXED_GT_PROB`
+  - `LR`
+  - `WEIGHT_DECAY`
+  - `HIDDEN_DIM`
+  - `NUM_LAYERS`
+  - `SMOOTHNESS_WEIGHT`
+  - `GLOBAL_ORIENT_WEIGHT`
+- 常用 stress eval 参数也已经暴露为环境变量：
+  - `BLACKOUT_STRATEGY`
+  - `BLACKOUT_1_LEN`
+  - `BLACKOUT_3_LEN`
+  - `BASE_POSE_NOISE_STD`
+  - `SENSOR_DROPOUT`
+- 注意：当前 STMF-v2 refiner 是 image-free cached-pose 模型，不是 HaMeR backbone DDP 训练。脚本会让两张卡分别跑 `zero` 和 `sensor` 两条实验线，但单条 refiner 训练本身很小，默认不应期待每张卡稳定占用 40GB 显存。想提高双卡吞吐，优先并行跑多组 sweep；想单任务吃满显存，需要回到 image backbone / feature extraction 级训练。
 - 训练两个 v2 refiner：
   - `sensor_mode=zero`：temporal pose-only refiner
   - `sensor_mode=sensor`：sensor-guided refiner
