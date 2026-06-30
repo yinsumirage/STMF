@@ -133,6 +133,10 @@ sensor-guided temporal MANO refinement：在 HaMeR/WiLoR 这类单帧 RGB 基座
   - `sensor_dropout=0.5`: sensor `PA-MPJPE=17.854`, `PA-MPVPE=16.512`; zero `PA-MPJPE=17.903`, `PA-MPVPE=16.573`
   - 结论：在当前 cached protocol 下，sensor-guided refiner 对 base pose 抖动更稳；sensor 大量缺失时仍保持 PA 优势，但 jitter 会退化。
 - 2026-07-01 note: earlier eval-only `SENSOR_NOISE_STD` rows before commit `fix zero sensor eval path` are diagnostic only, because `sensor_mode=zero` was incorrectly noised after zeroing. Use the fixed rerun for any sensor-noise conclusion.
+- Fixed sensor-noise eval rerun: `results/sensor_refiner/ho3d_v3_20260701_sensdrop02_sensor_noise_eval_fixed/summary_refined_metrics.csv`.
+  - zero stays invariant for `SENSOR_NOISE_STD=0.0/0.02/0.05/0.1/0.2`: `PA-MPJPE=17.903`, `PA-MPVPE=16.573`, `PredJitter=4.249`.
+  - sensor stays primary-stable through moderate noise: `PA-MPJPE=17.614/17.614/17.614/17.614/17.621`; `PredJitter=4.244/4.259/4.328/4.510/4.961`.
+  - conclusion: pseudo-sensor Gaussian noise mainly hurts temporal jitter at high noise; it does not erase the sensor-vs-zero PA advantage in this cached protocol.
 - `TRAIN_BASE_POSE_HOLD_DROPOUT=0.05/0.1/0.2` 已试过，clean PA-MPJPE 分别约 `17.681 / 17.690 / 17.686`，没有超过 `sensdrop02` 的 `17.614`，暂不作为默认配置。
 
 #### 2.2 STMF 模型和评测链路
