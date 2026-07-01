@@ -1,5 +1,7 @@
 ## STMF Project Progress
 
+Recent presentation HTML: `docs/10_recent_experiment_progress.html`
+
 这份文档用于记录当前仓库在原始 HaMeR 基础上的改动、现阶段结论、以及推荐使用方式。
 
 当前主线已经从 **HO3D-v3 plain HaMeR finetune 提分** 收束到

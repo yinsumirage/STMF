@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>STMF 近期实验进度展示</title>
+  <style>
+    :root {
+      --ink: #18212b;
+      --muted: #637083;
+      --paper: #f7f9fb;
+      --panel: #ffffff;
+      --line: #d9e2ec;
+      --blue: #2864d8;
+      --cyan: #00a7b5;
+      --red: #c44646;
+      --green: #20845a;
+      --amber: #b77716;
+      --code: #edf3f8;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(40, 100, 216, 0.06) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(40, 100, 216, 0.05) 1px, transparent 1px),
+        var(--paper);
+      background-size: 34px 34px;
+      font: 16px/1.68 "Inter", "Segoe UI", "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 36px));
+      margin: 0 auto;
+      padding: 34px 0 64px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 28px;
+      align-items: stretch;
+      margin-bottom: 28px;
+    }
+
+    .hero-main,
+    .hero-side,
+    section {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--line);
+      box-shadow: 0 18px 50px rgba(21, 39, 68, 0.08);
+    }
+
+    .hero-main {
+      padding: 34px;
+      border-left: 8px solid var(--blue);
+    }
+
+    .hero-side {
+      padding: 26px;
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--blue);
+      font: 700 12px/1.2 "Segoe UI Mono", Consolas, monospace;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      line-height: 1.16;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      max-width: 850px;
+      font-size: clamp(34px, 5vw, 64px);
+    }
+
+    h2 {
+      font-size: 28px;
+      margin-bottom: 16px;
+    }
+
+    h3 {
+      font-size: 19px;
+      margin: 18px 0 8px;
+    }
+
+    p { margin: 10px 0; }
+    strong { color: #0d1723; }
+    code {
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: var(--code);
+      color: #19304a;
+      font-family: "Segoe UI Mono", Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    section {
+      margin: 18px 0;
+      padding: 26px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      background: #fbfdff;
+      padding: 16px;
+      min-height: 116px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .metric .value {
+      margin-top: 8px;
+      font: 800 30px/1 "Segoe UI", Arial, sans-serif;
+    }
+
+    .metric .note {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .callout {
+      border-left: 6px solid var(--amber);
+      background: #fff8eb;
+      padding: 14px 16px;
+      margin: 16px 0;
+    }
+
+    .callout.red {
+      border-left-color: var(--red);
+      background: #fff3f3;
+    }
+
+    .callout.green {
+      border-left-color: var(--green);
+      background: #effaf4;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 8px;
+      background: #fff;
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #edf3fa;
+      font-weight: 750;
+    }
+
+    td.num, th.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .good { color: var(--green); font-weight: 750; }
+    .warn { color: var(--amber); font-weight: 750; }
+    .bad { color: var(--red); font-weight: 750; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .step {
+      position: relative;
+      border: 1px solid var(--line);
+      background: #fbfdff;
+      padding: 13px;
+      min-height: 120px;
+    }
+
+    .step b {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--blue);
+    }
+
+    .bar {
+      height: 10px;
+      border-radius: 999px;
+      background: #dfe8f2;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--blue), var(--cyan));
+    }
+
+    ul {
+      margin: 10px 0 0 20px;
+      padding: 0;
+    }
+
+    li { margin: 7px 0; }
+
+    .split {
+      display: grid;
+      grid-template-columns: 0.82fr 1.18fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .footer {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .hero, .grid-2, .grid-3, .split, .flow {
+        grid-template-columns: 1fr;
+      }
+      .hero-main, .hero-side, section {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="hero">
+      <div class="hero-main">
+        <p class="eyebrow">STMF / sensor-guided temporal MANO refinement</p>
+        <h1>近期实验进度展示：从 plain HaMeR 调参转向 sensor-guided temporal refiner</h1>
+        <p>
+          当前实验主线不再是继续硬调 HaMeR 在 HO3D-v3 上的单帧 finetune 分数，而是固定 HaMeR base prediction，
+          检验低维拉线 pseudo-sensor 是否能在时序 MANO refine 中提供额外约束。
+        </p>
+        <div class="callout red">
+          <strong>重要解释：</strong>当前 HO3D-v3 上 base HaMeR 的 self-eval PA-MPJPE 约为 <code>18.920mm</code>，
+          明显高于你预期的 10mm 左右，也高于早期约 13mm 的结果。这个绝对值现在不能简单解释成“模型太差”或“训练不够”，
+          更可能混合了 v2/v3 protocol 差异、evaluation split 语义、GT/关节顺序、camera/patch 评测协议和 base cache 质量等因素。
+        </div>
+      </div>
+      <aside class="hero-side">
+        <p class="eyebrow">当前最好结论</p>
+        <div class="metric">
+          <div class="label">Sensor-guided clean PA-MPJPE</div>
+          <div class="value">17.614</div>
+          <div class="note">同配置 zero-sensor 为 17.903，raw HaMeR cache 为 18.920。</div>
+        </div>
+        <div class="metric" style="margin-top: 12px;">
+          <div class="label">训练 / 评测帧数</div>
+          <div class="value">83k / 20k</div>
+          <div class="note">训练用 HO3D-v3 train NPZ，评测用 HO3D-v3 evaluation NPZ。</div>
+        </div>
+      </aside>
+    </div>
+
+    <section>
+      <h2>1. 数据到底怎么用的</h2>
+      <div class="grid-2">
+        <div>
+          <h3>训练数据</h3>
+          <table>
+            <tr><th>文件</th><td><code>/data/hand_data/HO-3D_v3/ho3d_train.npz</code></td></tr>
+            <tr><th>帧数</th><td><code>83,325</code></td></tr>
+            <tr><th>Base cache</th><td><code>ho3d_train_hamer_base_cache.npz</code>，同样 <code>83,325</code> 条</td></tr>
+            <tr><th>训练目标</th><td>用 GT MANO pose 监督 refiner 的 refined pose；pseudo-sensor 从 GT joints/MANO 生成。</td></tr>
+          </table>
+        </div>
+        <div>
+          <h3>评测数据</h3>
+          <table>
+            <tr><th>文件</th><td><code>/data/hand_data/HO-3D_v3/ho3d_evaluation.npz</code></td></tr>
+            <tr><th>帧数</th><td><code>20,428</code></td></tr>
+            <tr><th>Base cache</th><td><code>ho3d_evaluation_hamer_base_cache.npz</code>，同样 <code>20,428</code> 条</td></tr>
+            <tr><th>评测方式</th><td><code>--stateful</code>，上一帧 refined pose 会回填到下一帧窗口。</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="callout">
+        这里的“训练少不少”要分两层看：帧数不少，train split 全量 83,325 帧；但因为 <code>BATCH_TRAIN=8192</code>，
+        每个 epoch 只有约 11 个 optimizer step，20 epoch 约 220 step。步数看起来少，不过我们试过更长训练，
+        40/100 epoch 没有继续改善，反而有过拟合迹象。后续如果要排除“step 不足”，更合理的是减小 batch、增加 step，而不是盲目加 epoch。
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 当前 pipeline</h2>
+      <div class="flow">
+        <div class="step"><b>01 打包 GT</b>HO3D-v3 train/eval NPZ，包含 MANO、3D joints、imgname、bbox 等。</div>
+        <div class="step"><b>02 缓存 HaMeR</b>离线跑 HaMeR checkpoint，生成每帧 <code>base_pose/base_cam</code>。</div>
+        <div class="step"><b>03 构造时序窗口</b>每个 target frame 带过去若干帧 pose window、sensor window 和 valid mask。</div>
+        <div class="step"><b>04 训练 refiner</b>只预测 <code>hand_pose</code> residual，默认不改 global orient / camera。</div>
+        <div class="step"><b>05 stateful eval</b>逐序列评测，把 refined pose 回填历史，计算 3D 和 temporal 指标。</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. 主结果：sensor 比 pose-only refiner 更好</h2>
+      <table>
+        <tr>
+          <th>方法</th>
+          <th class="num">PA-MPJPE ↓</th>
+          <th class="num">PA-MPVPE ↓</th>
+          <th class="num">MPJVE ↓</th>
+          <th class="num">PredJitter ↓</th>
+          <th>解释</th>
+        </tr>
+        <tr>
+          <td>Raw HaMeR cache</td>
+          <td class="num">18.920</td>
+          <td class="num">17.434</td>
+          <td class="num">2.948</td>
+          <td class="num">4.378</td>
+          <td>固定 base，不做 temporal refine。</td>
+        </tr>
+        <tr>
+          <td>Temporal pose-only refiner</td>
+          <td class="num">17.903</td>
+          <td class="num">16.573</td>
+          <td class="num">2.875</td>
+          <td class="num">4.249</td>
+          <td>结构相同，但 sensor 输入置零。</td>
+        </tr>
+        <tr>
+          <td><strong>Sensor-guided refiner</strong></td>
+          <td class="num good">17.614</td>
+          <td class="num good">16.316</td>
+          <td class="num good">2.873</td>
+          <td class="num good">4.244</td>
+          <td>同样训练/eval 协议，只多了 5D pseudo-sensor。</td>
+        </tr>
+      </table>
+      <div class="grid-3">
+        <div class="metric">
+          <div class="label">Raw HaMeR → pose-only</div>
+          <div class="value">-1.017</div>
+          <div class="note">说明 temporal refiner 本身能修一部分 base prediction。</div>
+        </div>
+        <div class="metric">
+          <div class="label">pose-only → sensor-guided</div>
+          <div class="value">-0.290</div>
+          <div class="note">这是 sensor 的增量贡献，当前最关键。</div>
+        </div>
+        <div class="metric">
+          <div class="label">Sensor clean PredJitter</div>
+          <div class="value">4.244</div>
+          <div class="note">没有靠明显牺牲时序稳定性换 PA。</div>
+        </div>
+      </div>
+      <p>
+        为什么这能证明 sensor 有用：sensor 和 zero 两组使用同一份 HaMeR cache、同一份 HO3D-v3 evaluation NPZ、
+        同一套 refiner 结构和同一套 metrics。区别主要是 sensor window 是否有效，因此 sensor-vs-zero 是当前最干净的 ablation。
+      </p>
+    </section>
+
+    <section>
+      <h2>4. 和 EMA baseline 的区别</h2>
+      <table>
+        <tr>
+          <th>方法</th>
+          <th class="num">PA-MPJPE ↓</th>
+          <th class="num">PA-MPVPE ↓</th>
+          <th class="num">MPJVE ↓</th>
+          <th class="num">PredJitter ↓</th>
+          <th>结论</th>
+        </tr>
+        <tr>
+          <td>HaMeR + EMA, alpha=0.05</td>
+          <td class="num">18.717</td>
+          <td class="num">17.226</td>
+          <td class="num good">2.840</td>
+          <td class="num good">4.206</td>
+          <td>平滑有效，但 primary 3D 仍明显弱。</td>
+        </tr>
+        <tr>
+          <td>Sensor-guided refiner</td>
+          <td class="num good">17.614</td>
+          <td class="num good">16.316</td>
+          <td class="num">2.873</td>
+          <td class="num">4.244</td>
+          <td>不是单纯低通滤波，更像是在修 hand pose / finger articulation。</td>
+        </tr>
+      </table>
+      <div class="callout green">
+        EMA 能把 jitter 压低，但不能把 PA-MPJPE 降到 sensor refiner 水平。这说明当前 sensor 收益不是“过度平滑”带来的。
+      </div>
+    </section>
+
+    <section>
+      <h2>5. 最好配置和超参 sweep 结论</h2>
+      <div class="split">
+        <div>
+          <h3>当前最好配置</h3>
+          <table>
+            <tr><th>RUN_DATE</th><td><code>20260701_sensdrop02</code></td></tr>
+            <tr><th>EPOCHS</th><td><code>20</code></td></tr>
+            <tr><th>LR</th><td><code>5e-5</code></td></tr>
+            <tr><th>HISTORY_SOURCE</th><td><code>mixed</code></td></tr>
+            <tr><th>MIXED_GT_PROB</th><td><code>0.25</code></td></tr>
+            <tr><th>TRAIN_BASE_POSE_NOISE_STD</th><td><code>0.07</code></td></tr>
+            <tr><th>TRAIN_SENSOR_DROPOUT</th><td><code>0.2</code></td></tr>
+          </table>
+        </div>
+        <div>
+          <h3>已经观察到的规律</h3>
+          <ul>
+            <li><code>LR=5e-5</code> 比默认 <code>1e-4</code> 稳定。</li>
+            <li><code>40/100 epoch</code> 没有继续改善，说明“单纯训练更久”不是当前最优先方向。</li>
+            <li><code>TRAIN_BASE_POSE_NOISE_STD=0.07</code> 有帮助，说明 refiner 需要见过 base HaMeR 预测抖动。</li>
+            <li><code>TRAIN_SENSOR_DROPOUT=0.2</code> 有帮助，说明训练时模拟 sensor 缺失能改善泛化。</li>
+            <li><code>TRAIN_BASE_POSE_HOLD_DROPOUT=0.05/0.1/0.2</code> clean PA 约 <code>17.681/17.690/17.686</code>，没有超过当前最好结果。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>6. Robustness：base pose noise 和 sensor noise</h2>
+      <div class="grid-2">
+        <div>
+          <h3>Base pose noise eval</h3>
+          <table>
+            <tr><th>扰动</th><th class="num">sensor PA-MPJPE ↓</th><th class="num">zero PA-MPJPE ↓</th></tr>
+            <tr><td><code>base_pose_noise_std=0.03</code></td><td class="num good">17.657</td><td class="num">17.940</td></tr>
+            <tr><td><code>base_pose_noise_std=0.06</code></td><td class="num good">17.782</td><td class="num">18.048</td></tr>
+          </table>
+          <p>同样扰动 base pose 后 sensor 仍然赢，说明 sensor 对 base prediction 抖动有一定修正能力。</p>
+        </div>
+        <div>
+          <h3>Sensor noise eval, fixed rerun</h3>
+          <table>
+            <tr><th>sensor noise</th><th class="num">sensor PA ↓</th><th class="num">sensor jitter ↓</th><th class="num">zero PA ↓</th></tr>
+            <tr><td>0.00</td><td class="num">17.614</td><td class="num">4.244</td><td class="num">17.903</td></tr>
+            <tr><td>0.02</td><td class="num">17.614</td><td class="num">4.259</td><td class="num">17.903</td></tr>
+            <tr><td>0.05</td><td class="num">17.614</td><td class="num">4.328</td><td class="num">17.903</td></tr>
+            <tr><td>0.10</td><td class="num">17.614</td><td class="num warn">4.510</td><td class="num">17.903</td></tr>
+            <tr><td>0.20</td><td class="num">17.621</td><td class="num bad">4.961</td><td class="num">17.903</td></tr>
+          </table>
+          <p>PA 对 moderate sensor noise 很稳，但高噪声会伤 jitter。真实手套数据后续需要 calibration/filtering。</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>7. 为什么 HO3D-v3 绝对分数偏高</h2>
+      <div class="callout red">
+        当前 refiner 的结果不能解释为“HO3D-v3 应该就是 18mm”。更合理的说法是：在当前本地 self-eval protocol 下，
+        raw HaMeR cache 已经是 18.920mm，因此 refiner 的所有收益都建立在这个 base 上。绝对分数偏高需要单独排查。
+      </div>
+      <table>
+        <tr><th>可能来源</th><th>为什么会影响 PA-MPJPE / PA-MPVPE</th><th>当前判断</th></tr>
+        <tr>
+          <td>HO3D v2 / v3 protocol 差异</td>
+          <td>论文里常见结果多来自 v2 或官方协议，v3 标注和 split 语义可能不同。</td>
+          <td class="warn">需要回到 v2 protocol 或官方 server/官方格式再确认。</td>
+        </tr>
+        <tr>
+          <td>Evaluation NPZ 是否等价官方 evaluation</td>
+          <td>当前 <code>ho3d_evaluation.npz</code> 有 GT 并做 self-eval，未必和论文里的官方提交协议完全一致。</td>
+          <td class="warn">这是最需要单独隔离的 protocol 问题。</td>
+        </tr>
+        <tr>
+          <td>关节顺序 / MANO / handTrans / camMat</td>
+          <td>HO3D 官方顺序、HaMeR/OpenPose 顺序、MANO 重建顺序混用会直接抬高 3D 指标。</td>
+          <td>之前做过一致性排查，但只要重新导数据就要重跑检查。</td>
+        </tr>
+        <tr>
+          <td>Camera / patchK / bbox scale</td>
+          <td>HaMeR 原本依赖 crop/patch 相机近似，真实 camera intrinsics 差异会造成 2D/3D 监督拉扯。</td>
+          <td>已作为 negative result / protocol analysis 保留。</td>
+        </tr>
+        <tr>
+          <td>Refiner 没有重训 RGB backbone</td>
+          <td>当前 v2 只修 cached pose residual，不会从图像重新恢复更好的 global/camera 信息。</td>
+          <td>解释了为什么能改善但不能把 18mm 拉回 10mm。</td>
+        </tr>
+        <tr>
+          <td>Optimizer step 数</td>
+          <td>20 epoch 全量覆盖 train split，但 batch 很大，optimizer step 约 220。</td>
+          <td>可能影响上限；但更长 epoch 已经出现过拟合迹象，应尝试小 batch 多 step 而不是只加 epoch。</td>
+        </tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>8. 现在能证明什么，不能证明什么</h2>
+      <div class="grid-2">
+        <div class="callout green">
+          <h3>能证明</h3>
+          <ul>
+            <li>在固定 HaMeR cache 的 HO3D-v3 protocol 下，temporal refiner 比 raw HaMeR 更好。</li>
+            <li>同一结构下，sensor-guided refiner 比 zero-sensor pose-only refiner 更好。</li>
+            <li>sensor 收益不是简单 EMA 平滑带来的。</li>
+            <li>sensor 对 base pose noise 和 moderate sensor noise 有一定鲁棒性。</li>
+          </ul>
+        </div>
+        <div class="callout">
+          <h3>还不能证明</h3>
+          <ul>
+            <li>不能证明真实拉线手套数据不经校准就可直接用。</li>
+            <li>不能证明真实遮挡视频上一定恢复更好。</li>
+            <li>不能证明换 WiLoR / AnyHand backbone 后结论完全相同。</li>
+            <li>不能解释 HO3D-v3 绝对分数为什么从你预期的 10mm 左右升到 18mm。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>9. 给老师汇报时可以怎么说</h2>
+      <p>
+        前期继续直接 finetune HaMeR 在 HO3D-v3 上提分不稳定，而且 hard case 中存在 2D/3D/MANO/camera protocol 拉扯。
+        因此现在把主线调整为 <strong>sensor-guided temporal MANO refinement</strong>：
+        固定 HaMeR 作为 RGB base，使用公开 benchmark 上由 GT 生成的 pseudo-sensor 验证低维拉线先验是否能稳定 finger articulation。
+      </p>
+      <p>
+        当前全量 HO3D-v3 cached 实验表明，sensor-guided refiner 在 clean、base pose noise、sensor dropout/noise 下都稳定优于 pose-only refiner，
+        并且优于 HaMeR+EMA 的 primary 3D 指标。下一步需要补两件事：一是继续隔离 HO3D-v3 绝对分数偏高的 protocol 来源；
+        二是把真实拉线数据校准到同一套 <code>(T, 5)</code> sensor 接口，做实时 demo 和真实遮挡场景展示。
+      </p>
+      <div class="footer">
+        Generated from STMF remote results on 2026-07-01. Main files:
+        <code>scripts/run_stmf_v2_full_ho3d.sh</code>,
+        <code>scripts/train_sensor_refiner.py</code>,
+        <code>scripts/eval_sensor_refiner.py</code>,
+        <code>docs/01_current_status.md</code>.
+      </div>
+    </section>
+  </main>
+</body>
+</html>
